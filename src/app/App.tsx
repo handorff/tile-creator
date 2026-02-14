@@ -102,6 +102,22 @@ export function App(): JSX.Element {
     dispatch({ type: 'erase-primitive', id });
   };
 
+  const clearTile = (): void => {
+    if (project.primitives.length === 0) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      'Clear the current tile and remove all lines/circles? This can be undone with Undo.'
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    dispatch({ type: 'clear' });
+    setMessage('Cleared tile.');
+  };
+
   const exportSvg = (): void => {
     const svg = buildTiledSvg(project, { pattern });
     downloadText('tiling-pattern.svg', svg, 'image/svg+xml');
@@ -143,6 +159,9 @@ export function App(): JSX.Element {
         <div className="header-actions">
           <button type="button" onClick={exportSvg}>
             Export SVG
+          </button>
+          <button type="button" onClick={clearTile} disabled={project.primitives.length === 0}>
+            Clear Tile
           </button>
           <button type="button" onClick={exportProjectJson}>
             Export Project
