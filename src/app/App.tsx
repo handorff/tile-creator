@@ -18,6 +18,7 @@ import {
 } from '../state/projectState';
 import type { PatternSize, Primitive, ProjectState, TileShape, Tool } from '../types/model';
 import { downloadText } from '../utils/download';
+import { createId } from '../utils/ids';
 
 interface InitialState {
   project: ProjectState;
@@ -100,6 +101,16 @@ export function App(): JSX.Element {
 
   const erasePrimitive = (id: string): void => {
     dispatch({ type: 'erase-primitive', id });
+  };
+
+  const splitLine = (id: string, point: { x: number; y: number }): void => {
+    dispatch({
+      type: 'split-line',
+      id,
+      point,
+      firstId: createId('line'),
+      secondId: createId('line')
+    });
   };
 
   const clearTile = (): void => {
@@ -248,6 +259,7 @@ export function App(): JSX.Element {
           zoom={editorZoom}
           onAddPrimitive={addPrimitive}
           onUpdatePrimitive={updatePrimitive}
+          onSplitLine={splitLine}
           onErasePrimitive={erasePrimitive}
         />
 

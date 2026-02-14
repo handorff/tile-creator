@@ -16,7 +16,7 @@ import {
 import { FIXED_STROKE_WIDTH } from '../../state/projectState';
 import type { Point, Primitive, TileConfig, Tool } from '../../types/model';
 import { createId } from '../../utils/ids';
-import { distance } from '../../utils/math';
+import { clamp, distance, dot, subtract } from '../../utils/math';
 import { PrimitiveSvg } from './PrimitiveSvg';
 
 interface EditorCanvasProps {
@@ -27,6 +27,7 @@ interface EditorCanvasProps {
   zoom: number;
   onAddPrimitive: (primitive: Primitive) => void;
   onUpdatePrimitive: (primitive: Primitive) => void;
+  onSplitLine: (id: string, point: Point) => void;
   onErasePrimitive: (id: string) => void;
 }
 
@@ -167,11 +168,50 @@ function applyEditHandle(preview: Primitive, handle: EditHandle, point: Point): 
   return preview;
 }
 
+function projectPointToSegment(point: Point, a: Point, b: Point): Point {
+  const ab = subtract(b, a);
+  const ap = subtract(point, a);
+  const denom = dot(ab, ab);
+  if (denom <= 0) {
+    return a;
+  }
+
+  const t = clamp(dot(ap, ab) / denom, 0, 1);
+  return {
+    x: a.x + ab.x * t,
+    y: a.y + ab.y * t
+  };
+}
+
+function distanceToSegment(point: Point, a: Point, b: Point): number {
+  return distance(point, projectPointToSegment(point, a, b));
+}
+
+function findNearestLine(point: Point, primitives: Primitive[], tolerance: number): Primitive | null {
+  let best: Primitive | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (const primitive of primitives) {
+    if (primitive.kind !== 'line') {
+      continue;
+    }
+
+    const d = distanceToSegment(point, primitive.a, primitive.b);
+    if (d <= tolerance && d < bestDistance) {
+      best = primitive;
+      bestDistance = d;
+    }
+  }
+
+  return best;
+}
+
 export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
   const [draft, setDraft] = useState<DraftState>(null);
   const [drawing, setDrawing] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editDrag, setEditDrag] = useState<EditDragState | null>(null);
+  const [splitTargetLineId, setSplitTargetLineId] = useState<string | null>(null);
   const [panOffset, setPanOffset] = useState<Point>({ x: 0, y: 0 });
   const [panDrag, setPanDrag] = useState<PanDragState | null>(null);
   const baseViewBox = useMemo(() => viewBoxForTile(props.tile), [props.tile]);
@@ -197,6 +237,17 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
   }, [props.primitives, selectedId]);
 
   useEffect(() => {
+    if (
+      splitTargetLineId &&
+      !props.primitives.some(
+        (primitive) => primitive.id === splitTargetLineId && primitive.kind === 'line'
+      )
+    ) {
+      setSplitTargetLineId(null);
+    }
+  }, [props.primitives, splitTargetLineId]);
+
+  useEffect(() => {
     if (props.activeTool !== 'select') {
       setSelectedId(null);
       setEditDrag(null);
@@ -206,6 +257,12 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
   useEffect(() => {
     if (props.activeTool !== 'pan') {
       setPanDrag(null);
+    }
+  }, [props.activeTool]);
+
+  useEffect(() => {
+    if (props.activeTool !== 'split') {
+      setSplitTargetLineId(null);
     }
   }, [props.activeTool]);
 
@@ -222,6 +279,13 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
   const selectedPrimitive = useMemo(
     () => renderedPrimitives.find((primitive) => primitive.id === selectedId) ?? null,
     [renderedPrimitives, selectedId]
+  );
+  const splitTargetLine = useMemo(
+    () =>
+      renderedPrimitives.find(
+        (primitive) => primitive.id === splitTargetLineId && primitive.kind === 'line'
+      ) ?? null,
+    [renderedPrimitives, splitTargetLineId]
   );
 
   const snapPoints = useMemo(
@@ -301,6 +365,31 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
         startOffset: panOffset
       });
       event.currentTarget.setPointerCapture(event.pointerId);
+      return;
+    }
+
+    if (props.activeTool === 'split') {
+      const hitLine = findNearestLine(raw, renderedPrimitives, props.tile.size * 0.1);
+      if (!splitTargetLine || splitTargetLine.kind !== 'line') {
+        if (hitLine) {
+          setSplitTargetLineId(hitLine.id);
+        }
+        return;
+      }
+
+      const distanceToTarget = distanceToSegment(raw, splitTargetLine.a, splitTargetLine.b);
+      if (
+        hitLine &&
+        hitLine.id !== splitTargetLine.id &&
+        distanceToTarget > props.tile.size * 0.12
+      ) {
+        setSplitTargetLineId(hitLine.id);
+        return;
+      }
+
+      const snappedPoint = resolvePoint(raw);
+      const splitPoint = projectPointToSegment(snappedPoint, splitTargetLine.a, splitTargetLine.b);
+      props.onSplitLine(splitTargetLine.id, splitPoint);
       return;
     }
 
@@ -520,6 +609,14 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
           />
         ) : null}
 
+        {props.activeTool === 'split' && splitTargetLine ? (
+          <PrimitiveSvg
+            primitive={splitTargetLine}
+            strokeWidth={FIXED_STROKE_WIDTH * 2}
+            className="split-target-primitive"
+          />
+        ) : null}
+
         {props.activeTool === 'select' && selectedPrimitive && selectedPrimitive.kind === 'line' ? (
           <>
             <circle
@@ -591,7 +688,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
         <path d={tilePath} className="tile-outline" />
       </svg>
       <p className="hint">
-        Use Select to edit handles, Pan to move the editor view, and Line/Circle to draw new geometry.
+        Split tool: first click selects which line to split, second click picks the snapped split point.
       </p>
     </section>
   );

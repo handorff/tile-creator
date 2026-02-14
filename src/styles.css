@@ -192,6 +192,11 @@ button.active {
   stroke-dasharray: 4 3;
 }
 
+.split-target-primitive {
+  stroke: #f59e0b;
+  stroke-dasharray: 6 3;
+}
+
 .edit-handle {
   fill: #f8fafc;
   stroke: #0284c7;

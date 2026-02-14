@@ -16,6 +16,7 @@ const tools: Array<{ id: Tool; label: string }> = [
   { id: 'select', label: 'Select' },
   { id: 'line', label: 'Line' },
   { id: 'circle', label: 'Circle' },
+  { id: 'split', label: 'Split' },
   { id: 'pan', label: 'Pan' },
   { id: 'erase', label: 'Erase' }
 ];

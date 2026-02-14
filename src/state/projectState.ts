@@ -1,4 +1,5 @@
 import type {
+  Point,
   PatternSize,
   Primitive,
   ProjectState,
@@ -6,6 +7,7 @@ import type {
   TileShape,
   Tool
 } from '../types/model';
+import { clamp, distance, dot, subtract } from '../utils/math';
 
 const DEFAULT_TILE_SIZE = 120;
 export const FIXED_STROKE_WIDTH = 2;
@@ -43,6 +45,7 @@ export type ProjectAction =
   | { type: 'set-tile-shape'; shape: TileShape }
   | { type: 'add-primitive'; primitive: Primitive }
   | { type: 'update-primitive'; primitive: Primitive }
+  | { type: 'split-line'; id: string; point: Point; firstId: string; secondId: string }
   | { type: 'erase-primitive'; id: string }
   | { type: 'undo' }
   | { type: 'hydrate'; state: ProjectState }
@@ -136,6 +139,69 @@ function updatePrimitive(state: ProjectState, primitive: Primitive): ProjectStat
   };
 }
 
+function distanceToSegment(point: Point, a: Point, b: Point): number {
+  const ab = subtract(b, a);
+  const ap = subtract(point, a);
+  const denom = dot(ab, ab);
+  if (denom <= 0) {
+    return distance(point, a);
+  }
+
+  const t = clamp(dot(ap, ab) / denom, 0, 1);
+  const projected = { x: a.x + ab.x * t, y: a.y + ab.y * t };
+  return distance(point, projected);
+}
+
+function splitLine(
+  state: ProjectState,
+  id: string,
+  point: Point,
+  firstId: string,
+  secondId: string
+): ProjectState {
+  const index = state.primitives.findIndex((primitive) => primitive.id === id);
+  if (index < 0) {
+    return state;
+  }
+
+  const candidate = state.primitives[index];
+  if (candidate.kind !== 'line') {
+    return state;
+  }
+
+  if (distanceToSegment(point, candidate.a, candidate.b) > 1) {
+    return state;
+  }
+
+  if (distance(point, candidate.a) <= 1 || distance(point, candidate.b) <= 1) {
+    return state;
+  }
+
+  const next = withHistory(state);
+  const first: Primitive = {
+    id: firstId,
+    kind: 'line',
+    a: candidate.a,
+    b: point,
+    color: candidate.color
+  };
+  const second: Primitive = {
+    id: secondId,
+    kind: 'line',
+    a: point,
+    b: candidate.b,
+    color: candidate.color
+  };
+
+  const updated = [...state.primitives];
+  updated.splice(index, 1, first, second);
+
+  return {
+    ...next,
+    primitives: updated
+  };
+}
+
 function undo(state: ProjectState): ProjectState {
   if (state.history.past.length === 0) {
     return state;
@@ -171,6 +237,8 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return addPrimitive(state, action.primitive);
     case 'update-primitive':
       return updatePrimitive(state, action.primitive);
+    case 'split-line':
+      return splitLine(state, action.id, action.point, action.firstId, action.secondId);
     case 'erase-primitive':
       return erasePrimitive(state, action.id);
     case 'undo':

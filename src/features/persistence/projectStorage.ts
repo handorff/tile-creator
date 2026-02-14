@@ -56,6 +56,7 @@ function isTool(value: unknown): value is Tool {
     value === 'select' ||
     value === 'line' ||
     value === 'circle' ||
+    value === 'split' ||
     value === 'erase' ||
     value === 'pan'
   );

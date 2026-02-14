@@ -121,4 +121,57 @@ describe('project reducer', () => {
     expect(changed.tile.shape).toBe('hex-pointy');
     expect(changed.primitives).toHaveLength(0);
   });
+
+  it('splits a line into two segments and supports undo', () => {
+    const withLine = projectReducer(initialProjectState, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-1',
+        kind: 'line',
+        a: { x: 0, y: 0 },
+        b: { x: 10, y: 0 },
+        color: '#111'
+      }
+    });
+
+    const split = projectReducer(withLine, {
+      type: 'split-line',
+      id: 'line-1',
+      point: { x: 4, y: 0 },
+      firstId: 'line-1a',
+      secondId: 'line-1b'
+    });
+
+    expect(split.primitives).toHaveLength(2);
+    expect(split.primitives[0]).toMatchObject({ a: { x: 0, y: 0 }, b: { x: 4, y: 0 } });
+    expect(split.primitives[1]).toMatchObject({ a: { x: 4, y: 0 }, b: { x: 10, y: 0 } });
+
+    const undone = projectReducer(split, { type: 'undo' });
+    expect(undone.primitives).toHaveLength(1);
+    expect(undone.primitives[0]).toMatchObject({ id: 'line-1' });
+  });
+
+  it('does not split when point is at endpoint', () => {
+    const withLine = projectReducer(initialProjectState, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-1',
+        kind: 'line',
+        a: { x: 0, y: 0 },
+        b: { x: 10, y: 0 },
+        color: '#111'
+      }
+    });
+
+    const split = projectReducer(withLine, {
+      type: 'split-line',
+      id: 'line-1',
+      point: { x: 0, y: 0 },
+      firstId: 'line-1a',
+      secondId: 'line-1b'
+    });
+
+    expect(split.primitives).toHaveLength(1);
+    expect(split.primitives[0]).toMatchObject({ id: 'line-1' });
+  });
 });
