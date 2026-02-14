@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { gatherSnapPoints, getLinePassThroughSnap, getSnapPoint } from './snapping';
+import {
+  gatherSnapPoints,
+  gatherSnapSegments,
+  getDirectionalSnapOnSegments,
+  getLinePassThroughSnap,
+  getSnapPoint,
+  getSnapPointOnSegments
+} from './snapping';
 import type { Primitive } from '../types/model';
 
 describe('snapping', () => {
@@ -40,6 +47,11 @@ describe('snapping', () => {
     expect(points).toContainEqual({ x: 5, y: 0 });
   });
 
+  it('includes tile edges in snap segments', () => {
+    const segments = gatherSnapSegments([], { shape: 'square', size: 10 });
+    expect(segments).toHaveLength(4);
+  });
+
   it('snaps to nearest point within tolerance', () => {
     const snap = getSnapPoint(
       { x: 9.8, y: 10.2 },
@@ -66,6 +78,27 @@ describe('snapping', () => {
     expect(snap).toBeNull();
   });
 
+  it('snaps to closest point on a line segment', () => {
+    const snapped = getSnapPointOnSegments(
+      { x: 4.9, y: 0.3 },
+      [
+        {
+          a: { x: 0, y: 0 },
+          b: { x: 10, y: 0 }
+        }
+      ],
+      1
+    );
+    expect(snapped).toEqual({ x: 4.9, y: 0 });
+  });
+
+  it('snaps to tile edge segment', () => {
+    const segments = gatherSnapSegments([], { shape: 'square', size: 10 });
+    const snapped = getSnapPointOnSegments({ x: 1.2, y: -10.4 }, segments, 1);
+    expect(snapped?.x).toBeCloseTo(1.2, 6);
+    expect(snapped?.y).toBeCloseTo(-10, 6);
+  });
+
   it('snaps line direction so segment passes through nearby snap point', () => {
     const snapped = getLinePassThroughSnap(
       { x: 0, y: 0 },
@@ -88,5 +121,46 @@ describe('snapping', () => {
     );
 
     expect(snapped).toBeNull();
+  });
+
+  it('snaps directional line endpoint to segment while preserving direction', () => {
+    const snapped = getDirectionalSnapOnSegments(
+      { x: 0, y: 0 },
+      { x: 8, y: 4 },
+      { x: 9.6, y: 5.2 },
+      [
+        {
+          a: { x: 10, y: -10 },
+          b: { x: 10, y: 10 }
+        }
+      ],
+      1
+    );
+
+    expect(snapped?.x).toBeCloseTo(10, 6);
+    expect(snapped?.y).toBeCloseTo(5, 6);
+  });
+
+  it('supports combined pass-through and edge-end snapping', () => {
+    const start = { x: 0, y: 0 };
+    const rawEnd = { x: 9.8, y: 4.4 };
+    const through = getLinePassThroughSnap(start, rawEnd, [{ x: 5, y: 2.5 }], 1);
+    expect(through).not.toBeNull();
+
+    const snappedEnd = getDirectionalSnapOnSegments(
+      start,
+      through!,
+      rawEnd,
+      [
+        {
+          a: { x: 10, y: -10 },
+          b: { x: 10, y: 10 }
+        }
+      ],
+      1
+    );
+
+    expect(snappedEnd?.x).toBeCloseTo(10, 6);
+    expect(snappedEnd?.y).toBeCloseTo(5, 6);
   });
 });

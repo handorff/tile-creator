@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import {
+  gatherSnapSegments,
   gatherSnapPoints,
+  getDirectionalSnapOnSegments,
   getLinePassThroughSnap,
   getSnapPoint,
+  getSnapPointOnSegments,
   getTilePolygon,
   hitTestPrimitive,
   periodicNeighborOffsets,
@@ -225,25 +228,59 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
     () => gatherSnapPoints(renderedPrimitives, props.tile),
     [renderedPrimitives, props.tile]
   );
+  const snapSegments = useMemo(
+    () => gatherSnapSegments(renderedPrimitives, props.tile),
+    [renderedPrimitives, props.tile]
+  );
 
   const snapTolerance = props.tile.size * 0.08;
   const linePassTolerance = props.tile.size * 0.05;
   const editHandleTolerance = props.tile.size * 0.09;
 
-  const resolvePoint = (raw: Point): Point =>
-    getSnapPoint(raw, { points: snapPoints, tolerance: snapTolerance }) ?? raw;
+  const resolvePointWith = (raw: Point, points: Point[], segments: Array<{ a: Point; b: Point }>): Point =>
+    getSnapPoint(raw, { points, tolerance: snapTolerance }) ??
+    getSnapPointOnSegments(raw, segments, snapTolerance) ??
+    raw;
 
-  const resolveLineEndWithPoints = (start: Point, raw: Point, points: Point[]): Point => {
+  const resolvePoint = (raw: Point): Point => resolvePointWith(raw, snapPoints, snapSegments);
+
+  const resolveLineEndWithPoints = (
+    start: Point,
+    raw: Point,
+    points: Point[],
+    segments: Array<{ a: Point; b: Point }>
+  ): Point => {
     const endpointSnap = getSnapPoint(raw, { points, tolerance: snapTolerance });
     if (endpointSnap) {
       return endpointSnap;
     }
 
-    return getLinePassThroughSnap(start, raw, points, linePassTolerance) ?? raw;
+    const throughSnap = getLinePassThroughSnap(start, raw, points, linePassTolerance);
+    if (throughSnap) {
+      const directionalSegmentSnap = getDirectionalSnapOnSegments(
+        start,
+        throughSnap,
+        raw,
+        segments,
+        snapTolerance
+      );
+      if (directionalSegmentSnap) {
+        return directionalSegmentSnap;
+      }
+
+      return throughSnap;
+    }
+
+    const segmentSnap = getSnapPointOnSegments(raw, segments, snapTolerance);
+    if (segmentSnap) {
+      return segmentSnap;
+    }
+
+    return raw;
   };
 
   const resolveLineEnd = (start: Point, raw: Point): Point =>
-    resolveLineEndWithPoints(start, raw, snapPoints);
+    resolveLineEndWithPoints(start, raw, snapPoints, snapSegments);
 
   const handlePointerDown = (event: ReactPointerEvent<SVGSVGElement>): void => {
     const raw = toWorldPoint(event, viewBox);
@@ -336,7 +373,16 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
             props.primitives.filter((primitive) => primitive.id !== current.primitiveId),
             props.tile
           );
-          const snappedPoint = resolveLineEndWithPoints(anchor, raw, snapPointsForLineEdit);
+          const snapSegmentsForLineEdit = gatherSnapSegments(
+            props.primitives.filter((primitive) => primitive.id !== current.primitiveId),
+            props.tile
+          );
+          const snappedPoint = resolveLineEndWithPoints(
+            anchor,
+            raw,
+            snapPointsForLineEdit,
+            snapSegmentsForLineEdit
+          );
           return {
             ...current,
             preview: applyEditHandle(current.preview, current.handle, snappedPoint)
