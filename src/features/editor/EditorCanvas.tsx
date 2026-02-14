@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import {
   gatherSnapSegments,
@@ -25,6 +25,7 @@ interface EditorCanvasProps {
   activeTool: Tool;
   activeColor: string;
   zoom: number;
+  onZoomChange: (nextZoom: number) => void;
   onAddPrimitive: (primitive: Primitive) => void;
   onUpdatePrimitive: (primitive: Primitive) => void;
   onSplitLine: (id: string, point: Point) => void;
@@ -207,6 +208,8 @@ function findNearestLine(point: Point, primitives: Primitive[], tolerance: numbe
 }
 
 export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
+  const { onZoomChange, zoom } = props;
+  const svgRef = useRef<SVGSVGElement | null>(null);
   const [draft, setDraft] = useState<DraftState>(null);
   const [drawing, setDrawing] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -265,6 +268,24 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
       setSplitTargetLineId(null);
     }
   }, [props.activeTool]);
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) {
+      return;
+    }
+
+    const onWheel = (event: WheelEvent): void => {
+      event.preventDefault();
+      const factor = Math.exp(-event.deltaY * 0.0015);
+      onZoomChange(zoom * factor);
+    };
+
+    svg.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      svg.removeEventListener('wheel', onWheel);
+    };
+  }, [onZoomChange, zoom]);
 
   const renderedPrimitives = useMemo(() => {
     if (!editDrag) {
@@ -563,6 +584,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
     <section className="panel">
       <h2>Tile Editor</h2>
       <svg
+        ref={svgRef}
         className="editor-canvas"
         viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
         onPointerDown={handlePointerDown}
@@ -688,7 +710,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
         <path d={tilePath} className="tile-outline" />
       </svg>
       <p className="hint">
-        Split tool: first click selects which line to split, second click picks the snapped split point.
+        Scroll to zoom. Split tool: first click selects which line to split, second click picks the snapped split point.
       </p>
     </section>
   );

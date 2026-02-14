@@ -257,6 +257,7 @@ export function App(): JSX.Element {
           activeTool={project.activeTool}
           activeColor={project.activeColor}
           zoom={editorZoom}
+          onZoomChange={(nextZoom) => setEditorZoom(clampEditorZoom(nextZoom))}
           onAddPrimitive={addPrimitive}
           onUpdatePrimitive={updatePrimitive}
           onSplitLine={splitLine}
