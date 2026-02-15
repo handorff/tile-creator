@@ -623,7 +623,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
       : null;
 
   return (
-    <section className="panel">
+    <section className="canvas-panel">
       <h2>Tile Editor</h2>
       <svg
         ref={svgRef}

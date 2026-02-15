@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import type { ChangeEvent } from 'react';
+import type { ChangeEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { EditorCanvas } from '../features/editor/EditorCanvas';
 import { Toolbar } from '../features/editor/Toolbar';
 import { buildTiledSvg } from '../features/export/exportSvg';
@@ -27,6 +27,8 @@ interface InitialState {
 
 const MIN_EDITOR_ZOOM = 0.5;
 const MAX_EDITOR_ZOOM = 10;
+const MIN_EDITOR_PANE = 0.3;
+const MAX_EDITOR_PANE = 0.7;
 
 function clampPattern(value: number): number {
   if (Number.isNaN(value) || value < 1) {
@@ -40,6 +42,13 @@ function clampEditorZoom(value: number): number {
     return 1;
   }
   return Math.min(MAX_EDITOR_ZOOM, Math.max(MIN_EDITOR_ZOOM, value));
+}
+
+function clampEditorPane(value: number): number {
+  if (Number.isNaN(value)) {
+    return 0.55;
+  }
+  return Math.min(MAX_EDITOR_PANE, Math.max(MIN_EDITOR_PANE, value));
 }
 
 function loadInitialState(): InitialState {
@@ -62,6 +71,9 @@ export function App(): JSX.Element {
   const [selectedPrimitiveId, setSelectedPrimitiveId] = useState<string | null>(null);
   const [message, setMessage] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const centerSplitRef = useRef<HTMLDivElement | null>(null);
+  const [editorPane, setEditorPane] = useState<number>(0.55);
+  const [resizingPane, setResizingPane] = useState<boolean>(false);
 
   useEffect(() => {
     saveAutosave(project, pattern);
@@ -191,85 +203,49 @@ export function App(): JSX.Element {
     }
   };
 
+  const updateEditorPane = (clientX: number): void => {
+    const splitElement = centerSplitRef.current;
+    if (!splitElement) {
+      return;
+    }
+
+    const bounds = splitElement.getBoundingClientRect();
+    if (bounds.width <= 0) {
+      return;
+    }
+
+    setEditorPane(clampEditorPane((clientX - bounds.left) / bounds.width));
+  };
+
+  const onSplitPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setResizingPane(true);
+    updateEditorPane(event.clientX);
+  };
+
+  const onSplitPointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    if (!resizingPane) {
+      return;
+    }
+    updateEditorPane(event.clientX);
+  };
+
+  const onSplitPointerUp = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setResizingPane(false);
+  };
+
   return (
     <main className="app-shell">
-      <header className="app-header">
-        <div>
-          <h1>Tile Creator</h1>
-          <p>Create one tile, then repeat it into seamless geometric patterns.</p>
-        </div>
-        <div className="header-actions">
-          <button type="button" onClick={exportSvg}>
-            Export SVG
-          </button>
-          <button type="button" onClick={clearTile} disabled={project.primitives.length === 0}>
-            Clear Tile
-          </button>
-          <button type="button" onClick={exportProjectJson}>
-            Export Project
-          </button>
-          <button type="button" onClick={() => fileInputRef.current?.click()}>
-            Import Project
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            hidden
-            accept="application/json"
-            onChange={importProjectJson}
-          />
-        </div>
+      <header className="title-bar">
+        <h1>Tile Creator</h1>
+        <p>Create one tile, then repeat it into seamless geometric patterns.</p>
       </header>
 
-      <section className="pattern-controls panel">
-        <h2>Pattern Size</h2>
-        <div className="pattern-grid">
-          <label className="field">
-            Columns
-            <input
-              data-testid="pattern-columns"
-              type="number"
-              min={1}
-              value={pattern.columns}
-              onChange={(event) =>
-                setPattern((current) => ({
-                  ...current,
-                  columns: clampPattern(Number(event.target.value))
-                }))
-              }
-            />
-          </label>
-          <label className="field">
-            Rows
-            <input
-              data-testid="pattern-rows"
-              type="number"
-              min={1}
-              value={pattern.rows}
-              onChange={(event) =>
-                setPattern((current) => ({
-                  ...current,
-                  rows: clampPattern(Number(event.target.value))
-                }))
-              }
-            />
-          </label>
-          <label className="field zoom-field">
-            Editor Zoom ({editorZoom.toFixed(1)}x)
-            <input
-              data-testid="editor-zoom"
-              type="range"
-              min={MIN_EDITOR_ZOOM}
-              max={MAX_EDITOR_ZOOM}
-              step={0.1}
-              value={editorZoom}
-              onChange={(event) => setEditorZoom(clampEditorZoom(Number(event.target.value)))}
-            />
-          </label>
-        </div>
-      </section>
-
-      <section className="workspace-grid">
+      <section className="workspace-layout">
         <Toolbar
           shape={project.tile.shape}
           activeTool={project.activeTool}
@@ -282,24 +258,127 @@ export function App(): JSX.Element {
           onUndo={() => dispatch({ type: 'undo' })}
         />
 
-        <EditorCanvas
-          tile={project.tile}
-          primitives={project.primitives}
-          activeTool={project.activeTool}
-          activeColor={project.activeColor}
-          zoom={editorZoom}
-          onZoomChange={(nextZoom) => setEditorZoom(clampEditorZoom(nextZoom))}
-          onAddPrimitive={addPrimitive}
-          onUpdatePrimitive={updatePrimitive}
-          onSplitLine={splitLine}
-          onErasePrimitive={erasePrimitive}
-          onSelectionChange={setSelectedPrimitiveId}
-        />
+        <section className="center-panel">
+          <div
+            ref={centerSplitRef}
+            className="center-split"
+            style={{
+              gridTemplateColumns: `${(editorPane * 100).toFixed(2)}% 0.65rem ${(
+                100 -
+                editorPane * 100
+              ).toFixed(2)}%`
+            }}
+          >
+            <div className="center-pane">
+              <EditorCanvas
+                tile={project.tile}
+                primitives={project.primitives}
+                activeTool={project.activeTool}
+                activeColor={project.activeColor}
+                zoom={editorZoom}
+                onZoomChange={(nextZoom) => setEditorZoom(clampEditorZoom(nextZoom))}
+                onAddPrimitive={addPrimitive}
+                onUpdatePrimitive={updatePrimitive}
+                onSplitLine={splitLine}
+                onErasePrimitive={erasePrimitive}
+                onSelectionChange={setSelectedPrimitiveId}
+              />
+            </div>
 
-        <TilingPreview tile={project.tile} primitives={project.primitives} pattern={pattern} />
+            <div
+              className={`center-divider ${resizingPane ? 'dragging' : ''}`}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize editor and preview panes"
+              onPointerDown={onSplitPointerDown}
+              onPointerMove={onSplitPointerMove}
+              onPointerUp={onSplitPointerUp}
+              onPointerCancel={onSplitPointerUp}
+            />
+
+            <div className="center-pane">
+              <TilingPreview tile={project.tile} primitives={project.primitives} pattern={pattern} />
+            </div>
+          </div>
+        </section>
+
+        <aside className="right-panel">
+          <section className="right-section pattern-controls">
+            <h2>Pattern Size</h2>
+            <div className="pattern-grid">
+              <label className="field">
+                Columns
+                <input
+                  data-testid="pattern-columns"
+                  type="number"
+                  min={1}
+                  value={pattern.columns}
+                  onChange={(event) =>
+                    setPattern((current) => ({
+                      ...current,
+                      columns: clampPattern(Number(event.target.value))
+                    }))
+                  }
+                />
+              </label>
+              <label className="field">
+                Rows
+                <input
+                  data-testid="pattern-rows"
+                  type="number"
+                  min={1}
+                  value={pattern.rows}
+                  onChange={(event) =>
+                    setPattern((current) => ({
+                      ...current,
+                      rows: clampPattern(Number(event.target.value))
+                    }))
+                  }
+                />
+              </label>
+              <label className="field zoom-field">
+                Editor Zoom ({editorZoom.toFixed(1)}x)
+                <input
+                  data-testid="editor-zoom"
+                  type="range"
+                  min={MIN_EDITOR_ZOOM}
+                  max={MAX_EDITOR_ZOOM}
+                  step={0.1}
+                  value={editorZoom}
+                  onChange={(event) => setEditorZoom(clampEditorZoom(Number(event.target.value)))}
+                />
+              </label>
+            </div>
+          </section>
+
+          <section className="right-section">
+            <h2>Import / Export</h2>
+            <div className="right-actions">
+              <button type="button" onClick={exportSvg}>
+                Export SVG
+              </button>
+              <button type="button" onClick={exportProjectJson}>
+                Export Project
+              </button>
+              <button type="button" onClick={() => fileInputRef.current?.click()}>
+                Import Project
+              </button>
+              <button type="button" onClick={clearTile} disabled={project.primitives.length === 0}>
+                Clear Tile
+              </button>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              hidden
+              accept="application/json"
+              onChange={importProjectJson}
+            />
+          </section>
+
+          {message ? <p className="status-message">{message}</p> : null}
+        </aside>
       </section>
-
-      {message ? <p className="status-message">{message}</p> : null}
     </main>
   );
 }

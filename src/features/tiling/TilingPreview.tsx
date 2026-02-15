@@ -72,7 +72,7 @@ export function TilingPreview(props: TilingPreviewProps): JSX.Element {
   const neighbors = useMemo(() => periodicNeighborOffsets(props.tile), [props.tile]);
 
   return (
-    <section className="panel">
+    <section className="canvas-panel">
       <h2>Pattern Preview</h2>
       <svg
         data-testid="tiling-preview"
