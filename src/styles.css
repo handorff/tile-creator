@@ -134,6 +134,10 @@ button.active {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.stroke-buttons {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .icon-button {
   display: flex;
   align-items: center;

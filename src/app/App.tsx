@@ -14,6 +14,7 @@ import { TilingPreview } from '../features/tiling/TilingPreview';
 import {
   DEFAULT_COLORS,
   DEFAULT_PATTERN,
+  getPrimitiveStrokeWidth,
   initialProjectState,
   projectReducer
 } from '../state/projectState';
@@ -156,6 +157,39 @@ export function App(): JSX.Element {
 
     return selected;
   }, [project.primitives, selectedPrimitiveIds]);
+  const selectedPrimitives = useMemo(() => {
+    if (selectedPrimitiveIds.length === 0) {
+      return [];
+    }
+
+    const selectedSet = new Set(selectedPrimitiveIds);
+    return project.primitives.filter((primitive) => selectedSet.has(primitive.id));
+  }, [project.primitives, selectedPrimitiveIds]);
+  const highlightedStyle = useMemo(() => {
+    if (selectedPrimitives.length === 0) {
+      return {
+        color: project.activeColor,
+        strokeWidth: project.activeStrokeWidth
+      };
+    }
+
+    const first = selectedPrimitives[0];
+    const firstColor = first.color;
+    const firstStrokeWidth = getPrimitiveStrokeWidth(first);
+    const commonColor = selectedPrimitives.every((primitive) => primitive.color === firstColor)
+      ? firstColor
+      : null;
+    const commonStrokeWidth = selectedPrimitives.every(
+      (primitive) => getPrimitiveStrokeWidth(primitive) === firstStrokeWidth
+    )
+      ? firstStrokeWidth
+      : null;
+
+    return {
+      color: commonColor,
+      strokeWidth: commonStrokeWidth
+    };
+  }, [project.activeColor, project.activeStrokeWidth, selectedPrimitives]);
   const canSplitSelection = project.activeTool === 'select' && selectedLinePrimitive !== null;
   const splitSelectionArmed =
     canSplitSelection && !!selectedLinePrimitive && splitSelectionLineId === selectedLinePrimitive.id;
@@ -491,8 +525,8 @@ export function App(): JSX.Element {
         <Toolbar
           shape={project.tile.shape}
           activeTool={project.activeTool}
-          activeColor={project.activeColor}
-          activeStrokeWidth={project.activeStrokeWidth}
+          activeColor={highlightedStyle.color}
+          activeStrokeWidth={highlightedStyle.strokeWidth}
           visibleColors={availableColors.filter((color) => !hiddenColorSet.has(color))}
           colors={availableColors}
           canUndo={project.history.past.length > 0}

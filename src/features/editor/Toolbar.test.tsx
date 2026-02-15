@@ -43,14 +43,12 @@ describe('Toolbar', () => {
     expect(props.onDuplicateSelection).toHaveBeenCalledTimes(1);
   });
 
-  it('calls stroke-width callback when slider changes', () => {
+  it('calls stroke-width callback when button is clicked', () => {
     const props = buildToolbarProps();
     const view = render(<Toolbar {...props} onStrokeWidthChange={props.onStrokeWidthChange} />);
 
-    fireEvent.change(within(view.container).getByTestId('stroke-width-slider'), {
-      target: { value: '3.5' }
-    });
-    expect(props.onStrokeWidthChange).toHaveBeenCalledWith(3.5);
+    fireEvent.click(within(view.container).getByTestId('stroke-width-4'));
+    expect(props.onStrokeWidthChange).toHaveBeenCalledWith(4);
   });
 
   it('calls color visibility callback when segmented control is changed to off', () => {
@@ -108,6 +106,22 @@ describe('Toolbar', () => {
     expect(within(view.container).getByTestId('visibility-off-#111')).not.toHaveClass('active');
     expect(within(view.container).getByTestId('visibility-on-#222')).not.toHaveClass('active');
     expect(within(view.container).getByTestId('visibility-off-#222')).toHaveClass('active');
+  });
+
+  it('does not highlight color or stroke weight when active values are null', () => {
+    const props = buildToolbarProps();
+    const view = render(<Toolbar {...props} activeColor={null} activeStrokeWidth={null} />);
+
+    expect(within(view.container).getByTestId('color-#111')).not.toHaveClass('active-color');
+    expect(within(view.container).getByTestId('stroke-width-2')).not.toHaveClass('active');
+  });
+
+  it('highlights color independently from stroke weight', () => {
+    const props = buildToolbarProps();
+    const view = render(<Toolbar {...props} activeColor="#111" activeStrokeWidth={null} />);
+
+    expect(within(view.container).getByTestId('color-#111')).toHaveClass('active-color');
+    expect(within(view.container).getByTestId('stroke-width-2')).not.toHaveClass('active');
   });
 
   it('calls color visibility callback with true when enabling hidden color', () => {

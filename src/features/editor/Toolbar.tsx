@@ -10,15 +10,14 @@ import {
   Slash,
   type LucideIcon
 } from 'lucide-react';
-import { MAX_STROKE_WIDTH, MIN_STROKE_WIDTH, STROKE_WIDTH_STEP } from '../../state/projectState';
 import type { TileShape, Tool } from '../../types/model';
 import { SELECTION_SHORTCUTS, TOOL_SHORTCUTS, formatShortcutKey } from './shortcuts';
 
 interface ToolbarProps {
   shape: TileShape;
   activeTool: Tool;
-  activeColor: string;
-  activeStrokeWidth: number;
+  activeColor: string | null;
+  activeStrokeWidth: number | null;
   visibleColors: string[];
   colors: string[];
   canUndo: boolean;
@@ -48,6 +47,7 @@ const toolIcons: Record<Tool, LucideIcon> = {
   pan: Hand,
   erase: Eraser
 };
+const STROKE_OPTIONS = [0.5, 1, 2, 4] as const;
 
 export function Toolbar(props: ToolbarProps): JSX.Element {
   const hasSelection = props.selectedCount > 0;
@@ -112,18 +112,19 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
 
       <section>
         <h2>Stroke Weight</h2>
-        <label className="field">
-          Weight ({props.activeStrokeWidth.toFixed(1)})
-          <input
-            data-testid="stroke-width-slider"
-            type="range"
-            min={MIN_STROKE_WIDTH}
-            max={MAX_STROKE_WIDTH}
-            step={STROKE_WIDTH_STEP}
-            value={props.activeStrokeWidth}
-            onChange={(event) => props.onStrokeWidthChange(Number(event.target.value))}
-          />
-        </label>
+        <div className="button-row stroke-buttons">
+          {STROKE_OPTIONS.map((strokeWidth) => (
+            <button
+              key={strokeWidth}
+              type="button"
+              data-testid={`stroke-width-${strokeWidth}`}
+              className={props.activeStrokeWidth === strokeWidth ? 'active' : undefined}
+              onClick={() => props.onStrokeWidthChange(strokeWidth)}
+            >
+              {strokeWidth}
+            </button>
+          ))}
+        </div>
       </section>
 
       <section>
