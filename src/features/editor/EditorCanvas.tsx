@@ -369,6 +369,17 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
 
   const handlePointerDown = (event: ReactPointerEvent<SVGSVGElement>): void => {
     const raw = toWorldPoint(event, viewBox);
+    const isSecondaryButton = event.button === 2;
+
+    if (props.activeTool === 'pan' || isSecondaryButton) {
+      setPanDrag({
+        clientX: event.clientX,
+        clientY: event.clientY,
+        startOffset: panOffset
+      });
+      event.currentTarget.setPointerCapture(event.pointerId);
+      return;
+    }
 
     if (props.activeTool === 'erase') {
       const hit = hitTestPrimitive(raw, renderedPrimitives, props.tile.size * 0.1);
@@ -376,16 +387,6 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
         props.onErasePrimitive(hit.id);
       }
       setSelectedId(null);
-      return;
-    }
-
-    if (props.activeTool === 'pan') {
-      setPanDrag({
-        clientX: event.clientX,
-        clientY: event.clientY,
-        startOffset: panOffset
-      });
-      event.currentTarget.setPointerCapture(event.pointerId);
       return;
     }
 
@@ -575,6 +576,10 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
     }
   };
 
+  const handleContextMenu = (event: React.MouseEvent<SVGSVGElement>): void => {
+    event.preventDefault();
+  };
+
   const circleHandle =
     selectedPrimitive && selectedPrimitive.kind === 'circle'
       ? circleRadiusHandle(selectedPrimitive)
@@ -587,6 +592,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
         ref={svgRef}
         className="editor-canvas"
         viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`}
+        onContextMenu={handleContextMenu}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -710,7 +716,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
         <path d={tilePath} className="tile-outline" />
       </svg>
       <p className="hint">
-        Scroll to zoom. Split tool: first click selects which line to split, second click picks the snapped split point.
+        Scroll to zoom. Right-click-drag pans any time. Split: first select line, then choose snapped split point.
       </p>
     </section>
   );
