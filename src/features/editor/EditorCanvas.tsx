@@ -673,15 +673,17 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
           )}
         </g>
 
-        {snapPoints.map((point, idx) => (
-          <circle
-            key={`snap-${idx}`}
-            className="snap-point"
-            cx={point.x}
-            cy={point.y}
-            r={props.tile.size * 0.015}
-          />
-        ))}
+        <g clipPath="url(#tile-clip-editor)">
+          {snapPoints.map((point, idx) => (
+            <circle
+              key={`snap-${idx}`}
+              className="snap-point"
+              cx={point.x}
+              cy={point.y}
+              r={props.tile.size * 0.015}
+            />
+          ))}
+        </g>
 
         {props.activeTool === 'select'
           ? selectedPrimitives.map((primitive) => (
