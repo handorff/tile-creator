@@ -42,11 +42,13 @@ export const initialProjectState: ProjectState = {
 export type ProjectAction =
   | { type: 'set-tool'; tool: Tool }
   | { type: 'set-color'; color: string }
+  | { type: 'recolor-primitives'; ids: string[]; color: string }
   | { type: 'set-tile-shape'; shape: TileShape }
   | { type: 'add-primitive'; primitive: Primitive }
   | { type: 'update-primitive'; primitive: Primitive }
   | { type: 'split-line'; id: string; point: Point; firstId: string; secondId: string }
   | { type: 'erase-primitive'; id: string }
+  | { type: 'erase-primitives'; ids: string[] }
   | { type: 'undo' }
   | { type: 'hydrate'; state: ProjectState }
   | { type: 'clear' };
@@ -87,15 +89,24 @@ function addPrimitive(state: ProjectState, primitive: Primitive): ProjectState {
 }
 
 function erasePrimitive(state: ProjectState, id: string): ProjectState {
-  const exists = state.primitives.some((primitive) => primitive.id === id);
-  if (!exists) {
+  return erasePrimitives(state, [id]);
+}
+
+function erasePrimitives(state: ProjectState, ids: string[]): ProjectState {
+  if (ids.length === 0) {
+    return state;
+  }
+
+  const selected = new Set(ids);
+  const hasMatch = state.primitives.some((primitive) => selected.has(primitive.id));
+  if (!hasMatch) {
     return state;
   }
 
   const next = withHistory(state);
   return {
     ...next,
-    primitives: state.primitives.filter((primitive) => primitive.id !== id)
+    primitives: state.primitives.filter((primitive) => !selected.has(primitive.id))
   };
 }
 
@@ -133,6 +144,36 @@ function updatePrimitive(state: ProjectState, primitive: Primitive): ProjectStat
   const updatedPrimitives = [...state.primitives];
   updatedPrimitives[index] = primitive;
 
+  return {
+    ...next,
+    primitives: updatedPrimitives
+  };
+}
+
+function recolorPrimitives(state: ProjectState, ids: string[], color: string): ProjectState {
+  if (ids.length === 0) {
+    return state;
+  }
+
+  const selected = new Set(ids);
+  let changed = false;
+  const updatedPrimitives = state.primitives.map((primitive) => {
+    if (!selected.has(primitive.id) || primitive.color === color) {
+      return primitive;
+    }
+
+    changed = true;
+    return {
+      ...primitive,
+      color
+    };
+  });
+
+  if (!changed) {
+    return state;
+  }
+
+  const next = withHistory(state);
   return {
     ...next,
     primitives: updatedPrimitives
@@ -231,6 +272,8 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         ...state,
         activeColor: action.color
       };
+    case 'recolor-primitives':
+      return recolorPrimitives(state, action.ids, action.color);
     case 'set-tile-shape':
       return setTileShape(state, action.shape);
     case 'add-primitive':
@@ -241,6 +284,8 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return splitLine(state, action.id, action.point, action.firstId, action.secondId);
     case 'erase-primitive':
       return erasePrimitive(state, action.id);
+    case 'erase-primitives':
+      return erasePrimitives(state, action.ids);
     case 'undo':
       return undo(state);
     case 'hydrate':

@@ -31,7 +31,8 @@ interface EditorCanvasProps {
   onUpdatePrimitive: (primitive: Primitive) => void;
   onSplitLine: (id: string, point: Point) => void;
   onErasePrimitive: (id: string) => void;
-  onSelectionChange: (id: string | null) => void;
+  onErasePrimitives: (ids: string[]) => void;
+  onSelectionChange: (ids: string[]) => void;
 }
 
 type DraftState =
@@ -208,11 +209,11 @@ function findNearestLine(point: Point, primitives: Primitive[], tolerance: numbe
 }
 
 export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
-  const { onZoomChange, zoom, onSelectionChange, onErasePrimitive } = props;
+  const { onZoomChange, zoom, onSelectionChange, onErasePrimitive, onErasePrimitives } = props;
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [draft, setDraft] = useState<DraftState>(null);
   const [drawing, setDrawing] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [editDrag, setEditDrag] = useState<EditDragState | null>(null);
   const [splitTargetLineId, setSplitTargetLineId] = useState<string | null>(null);
   const [panOffset, setPanOffset] = useState<Point>({ x: 0, y: 0 });
@@ -233,11 +234,14 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
   const periodicOffsets = useMemo(() => periodicNeighborOffsets(props.tile), [props.tile]);
 
   useEffect(() => {
-    if (selectedId && !props.primitives.some((primitive) => primitive.id === selectedId)) {
-      setSelectedId(null);
-      setEditDrag(null);
-    }
-  }, [props.primitives, selectedId]);
+    setSelectedIds((current) => {
+      const valid = current.filter((id) => props.primitives.some((primitive) => primitive.id === id));
+      if (valid.length !== current.length) {
+        setEditDrag(null);
+      }
+      return valid;
+    });
+  }, [props.primitives]);
 
   useEffect(() => {
     if (
@@ -252,7 +256,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
 
   useEffect(() => {
     if (props.activeTool !== 'select') {
-      setSelectedId(null);
+      setSelectedIds([]);
       setEditDrag(null);
     }
   }, [props.activeTool]);
@@ -270,8 +274,8 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
   }, [props.activeTool]);
 
   useEffect(() => {
-    onSelectionChange(selectedId);
-  }, [onSelectionChange, selectedId]);
+    onSelectionChange(selectedIds);
+  }, [onSelectionChange, selectedIds]);
 
   useEffect(() => {
     const svg = svgRef.current;
@@ -301,10 +305,15 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
     );
   }, [editDrag, props.primitives]);
 
-  const selectedPrimitive = useMemo(
-    () => renderedPrimitives.find((primitive) => primitive.id === selectedId) ?? null,
-    [renderedPrimitives, selectedId]
-  );
+  const selectedPrimitives = useMemo(() => {
+    if (selectedIds.length === 0) {
+      return [];
+    }
+
+    const selectedSet = new Set(selectedIds);
+    return renderedPrimitives.filter((primitive) => selectedSet.has(primitive.id));
+  }, [renderedPrimitives, selectedIds]);
+  const editableSelection = selectedPrimitives.length === 1 ? selectedPrimitives[0] : null;
   const splitTargetLine = useMemo(
     () =>
       renderedPrimitives.find(
@@ -388,9 +397,9 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
     if (props.activeTool === 'erase') {
       const hit = hitTestPrimitive(raw, renderedPrimitives, props.tile.size * 0.1);
       if (hit) {
-        props.onErasePrimitive(hit.id);
+        onErasePrimitive(hit.id);
       }
-      setSelectedId(null);
+      setSelectedIds([]);
       return;
     }
 
@@ -420,13 +429,13 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
     }
 
     if (props.activeTool === 'select') {
-      if (selectedPrimitive) {
-        const handle = editHandleAtPoint(raw, selectedPrimitive, editHandleTolerance);
+      if (editableSelection && !event.shiftKey) {
+        const handle = editHandleAtPoint(raw, editableSelection, editHandleTolerance);
         if (handle) {
           setEditDrag({
-            primitiveId: selectedPrimitive.id,
+            primitiveId: editableSelection.id,
             handle,
-            preview: selectedPrimitive
+            preview: editableSelection
           });
           event.currentTarget.setPointerCapture(event.pointerId);
           return;
@@ -435,14 +444,22 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
 
       const hit = hitTestPrimitive(raw, renderedPrimitives, props.tile.size * 0.1);
       if (hit) {
-        setSelectedId(hit.id);
-      } else {
-        setSelectedId(null);
+        if (event.shiftKey) {
+          setSelectedIds((current) =>
+            current.includes(hit.id)
+              ? current.filter((id) => id !== hit.id)
+              : [...current, hit.id]
+          );
+        } else {
+          setSelectedIds([hit.id]);
+        }
+      } else if (!event.shiftKey) {
+        setSelectedIds([]);
       }
       return;
     }
 
-    setSelectedId(null);
+    setSelectedIds([]);
 
     const point = resolvePoint(raw);
     if (props.activeTool === 'line') {
@@ -583,7 +600,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (!selectedId) {
+      if (selectedIds.length === 0) {
         return;
       }
 
@@ -604,22 +621,22 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
       }
 
       event.preventDefault();
-      onErasePrimitive(selectedId);
-      setSelectedId(null);
+      onErasePrimitives(selectedIds);
+      setSelectedIds([]);
       setEditDrag(null);
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onErasePrimitive, selectedId]);
+  }, [onErasePrimitives, selectedIds]);
 
   const handleContextMenu = (event: React.MouseEvent<SVGSVGElement>): void => {
     event.preventDefault();
   };
 
   const circleHandle =
-    selectedPrimitive && selectedPrimitive.kind === 'circle'
-      ? circleRadiusHandle(selectedPrimitive)
+    editableSelection && editableSelection.kind === 'circle'
+      ? circleRadiusHandle(editableSelection)
       : null;
 
   return (
@@ -666,13 +683,16 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
           />
         ))}
 
-        {props.activeTool === 'select' && selectedPrimitive ? (
-          <PrimitiveSvg
-            primitive={selectedPrimitive}
-            strokeWidth={FIXED_STROKE_WIDTH * 2}
-            className="selected-primitive"
-          />
-        ) : null}
+        {props.activeTool === 'select'
+          ? selectedPrimitives.map((primitive) => (
+              <PrimitiveSvg
+                key={`selected-${primitive.id}`}
+                primitive={primitive}
+                strokeWidth={FIXED_STROKE_WIDTH * 2}
+                className="selected-primitive"
+              />
+            ))
+          : null}
 
         {props.activeTool === 'split' && splitTargetLine ? (
           <PrimitiveSvg
@@ -682,39 +702,39 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
           />
         ) : null}
 
-        {props.activeTool === 'select' && selectedPrimitive && selectedPrimitive.kind === 'line' ? (
+        {props.activeTool === 'select' && editableSelection && editableSelection.kind === 'line' ? (
           <>
             <circle
               className="edit-handle"
-              cx={selectedPrimitive.a.x}
-              cy={selectedPrimitive.a.y}
+              cx={editableSelection.a.x}
+              cy={editableSelection.a.y}
               r={props.tile.size * 0.03}
             />
             <circle
               className="edit-handle"
-              cx={selectedPrimitive.b.x}
-              cy={selectedPrimitive.b.y}
+              cx={editableSelection.b.x}
+              cy={editableSelection.b.y}
               r={props.tile.size * 0.03}
             />
           </>
         ) : null}
 
         {props.activeTool === 'select' &&
-        selectedPrimitive &&
-        selectedPrimitive.kind === 'circle' &&
+        editableSelection &&
+        editableSelection.kind === 'circle' &&
         circleHandle ? (
           <>
             <line
               className="edit-guide"
-              x1={selectedPrimitive.center.x}
-              y1={selectedPrimitive.center.y}
+              x1={editableSelection.center.x}
+              y1={editableSelection.center.y}
               x2={circleHandle.x}
               y2={circleHandle.y}
             />
             <circle
               className="edit-handle"
-              cx={selectedPrimitive.center.x}
-              cy={selectedPrimitive.center.y}
+              cx={editableSelection.center.x}
+              cy={editableSelection.center.y}
               r={props.tile.size * 0.03}
             />
             <circle
@@ -753,7 +773,8 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
         <path d={tilePath} className="tile-outline" />
       </svg>
       <p className="hint">
-        Scroll to zoom. Right-click-drag pans any time. Split: first select line, then choose snapped split point.
+        Scroll to zoom. Right-click-drag pans any time. Shift+click adds or removes selection. Split:
+        first select line, then choose snapped split point.
       </p>
     </section>
   );

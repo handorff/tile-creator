@@ -38,6 +38,53 @@ describe('project reducer', () => {
     expect(erased.primitives).toHaveLength(0);
   });
 
+  it('erases multiple primitives in one action and undoes together', () => {
+    const one = projectReducer(initialProjectState, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-1',
+        kind: 'line',
+        a: { x: 0, y: 0 },
+        b: { x: 10, y: 10 },
+        color: '#111'
+      }
+    });
+    const two = projectReducer(one, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-2',
+        kind: 'line',
+        a: { x: 0, y: 10 },
+        b: { x: 10, y: 0 },
+        color: '#222'
+      }
+    });
+    const three = projectReducer(two, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-3',
+        kind: 'line',
+        a: { x: 5, y: 0 },
+        b: { x: 5, y: 10 },
+        color: '#333'
+      }
+    });
+
+    const erased = projectReducer(three, {
+      type: 'erase-primitives',
+      ids: ['line-1', 'line-2']
+    });
+
+    expect(erased.primitives.map((primitive) => primitive.id)).toEqual(['line-3']);
+
+    const undone = projectReducer(erased, { type: 'undo' });
+    expect(undone.primitives.map((primitive) => primitive.id)).toEqual([
+      'line-1',
+      'line-2',
+      'line-3'
+    ]);
+  });
+
   it('undo restores previous primitives', () => {
     const one = projectReducer(initialProjectState, {
       type: 'add-primitive',
@@ -173,5 +220,40 @@ describe('project reducer', () => {
 
     expect(split.primitives).toHaveLength(1);
     expect(split.primitives[0]).toMatchObject({ id: 'line-1' });
+  });
+
+  it('recolors all selected primitives in one history step', () => {
+    const withFirst = projectReducer(initialProjectState, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-1',
+        kind: 'line',
+        a: { x: 0, y: 0 },
+        b: { x: 10, y: 0 },
+        color: '#111'
+      }
+    });
+    const withBoth = projectReducer(withFirst, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-2',
+        kind: 'line',
+        a: { x: 0, y: 10 },
+        b: { x: 10, y: 10 },
+        color: '#222'
+      }
+    });
+
+    const recolored = projectReducer(withBoth, {
+      type: 'recolor-primitives',
+      ids: ['line-1', 'line-2'],
+      color: '#abc'
+    });
+
+    expect(recolored.primitives.map((primitive) => primitive.color)).toEqual(['#abc', '#abc']);
+    expect(recolored.history.past).toHaveLength(withBoth.history.past.length + 1);
+
+    const undone = projectReducer(recolored, { type: 'undo' });
+    expect(undone.primitives.map((primitive) => primitive.color)).toEqual(['#111', '#222']);
   });
 });

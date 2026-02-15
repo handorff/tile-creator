@@ -68,7 +68,7 @@ export function App(): JSX.Element {
   const [project, dispatch] = useReducer(projectReducer, initial.project);
   const [pattern, setPattern] = useState<PatternSize>(initial.pattern);
   const [editorZoom, setEditorZoom] = useState<number>(1);
-  const [selectedPrimitiveId, setSelectedPrimitiveId] = useState<string | null>(null);
+  const [selectedPrimitiveIds, setSelectedPrimitiveIds] = useState<string[]>([]);
   const [message, setMessage] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const centerSplitRef = useRef<HTMLDivElement | null>(null);
@@ -93,13 +93,10 @@ export function App(): JSX.Element {
   }, []);
 
   useEffect(() => {
-    if (
-      selectedPrimitiveId &&
-      !project.primitives.some((primitive) => primitive.id === selectedPrimitiveId)
-    ) {
-      setSelectedPrimitiveId(null);
-    }
-  }, [project.primitives, selectedPrimitiveId]);
+    setSelectedPrimitiveIds((current) =>
+      current.filter((id) => project.primitives.some((primitive) => primitive.id === id))
+    );
+  }, [project.primitives]);
 
   const addPrimitive = (primitive: Primitive): void => {
     dispatch({ type: 'add-primitive', primitive });
@@ -116,21 +113,14 @@ export function App(): JSX.Element {
   const setColor = (color: string): void => {
     dispatch({ type: 'set-color', color });
 
-    if (!selectedPrimitiveId) {
-      return;
-    }
-
-    const selected = project.primitives.find((primitive) => primitive.id === selectedPrimitiveId);
-    if (!selected || selected.color === color) {
+    if (selectedPrimitiveIds.length === 0) {
       return;
     }
 
     dispatch({
-      type: 'update-primitive',
-      primitive: {
-        ...selected,
-        color
-      }
+      type: 'recolor-primitives',
+      ids: selectedPrimitiveIds,
+      color
     });
   };
 
@@ -140,9 +130,16 @@ export function App(): JSX.Element {
 
   const erasePrimitive = (id: string): void => {
     dispatch({ type: 'erase-primitive', id });
-    if (selectedPrimitiveId === id) {
-      setSelectedPrimitiveId(null);
+    setSelectedPrimitiveIds((current) => current.filter((selectedId) => selectedId !== id));
+  };
+
+  const erasePrimitives = (ids: string[]): void => {
+    if (ids.length === 0) {
+      return;
     }
+
+    dispatch({ type: 'erase-primitives', ids });
+    setSelectedPrimitiveIds((current) => current.filter((selectedId) => !ids.includes(selectedId)));
   };
 
   const splitLine = (id: string, point: { x: number; y: number }): void => {
@@ -168,7 +165,7 @@ export function App(): JSX.Element {
     }
 
     dispatch({ type: 'clear' });
-    setSelectedPrimitiveId(null);
+    setSelectedPrimitiveIds([]);
     setMessage('Cleared tile.');
   };
 
@@ -281,7 +278,8 @@ export function App(): JSX.Element {
                 onUpdatePrimitive={updatePrimitive}
                 onSplitLine={splitLine}
                 onErasePrimitive={erasePrimitive}
-                onSelectionChange={setSelectedPrimitiveId}
+                onErasePrimitives={erasePrimitives}
+                onSelectionChange={setSelectedPrimitiveIds}
               />
             </div>
 
