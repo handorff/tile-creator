@@ -113,6 +113,7 @@ export function App(): JSX.Element {
   const centerSplitRef = useRef<HTMLDivElement | null>(null);
   const [editorPane, setEditorPane] = useState<number>(0.55);
   const [resizingPane, setResizingPane] = useState<boolean>(false);
+  const [showPatternPreview, setShowPatternPreview] = useState<boolean>(true);
   const availableColors = useMemo(
     () => Array.from(new Set([...DEFAULT_COLORS, ...project.primitives.map((primitive) => primitive.color)])),
     [project.primitives]
@@ -122,6 +123,12 @@ export function App(): JSX.Element {
   useEffect(() => {
     saveAutosave(project, pattern);
   }, [project, pattern]);
+
+  useEffect(() => {
+    if (!showPatternPreview) {
+      setResizingPane(false);
+    }
+  }, [showPatternPreview]);
 
   useEffect(() => {
     setSelectedPrimitiveIds((current) =>
@@ -421,6 +428,10 @@ export function App(): JSX.Element {
   };
 
   const updateEditorPane = (clientX: number): void => {
+    if (!showPatternPreview) {
+      return;
+    }
+
     const splitElement = centerSplitRef.current;
     if (!splitElement) {
       return;
@@ -491,13 +502,17 @@ export function App(): JSX.Element {
         <section className="center-panel">
           <div
             ref={centerSplitRef}
-            className="center-split"
-            style={{
-              gridTemplateColumns: `${(editorPane * 100).toFixed(2)}% 0.65rem ${(
-                100 -
-                editorPane * 100
-              ).toFixed(2)}%`
-            }}
+            className={`center-split${showPatternPreview ? '' : ' preview-hidden'}`}
+            style={
+              showPatternPreview
+                ? {
+                    gridTemplateColumns: `${(editorPane * 100).toFixed(2)}% 0.65rem ${(
+                      100 -
+                      editorPane * 100
+                    ).toFixed(2)}%`
+                  }
+                : undefined
+            }
           >
             <div className="center-pane">
               <EditorCanvas
@@ -517,20 +532,24 @@ export function App(): JSX.Element {
               />
             </div>
 
-            <div
-              className={`center-divider ${resizingPane ? 'dragging' : ''}`}
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Resize editor and preview panes"
-              onPointerDown={onSplitPointerDown}
-              onPointerMove={onSplitPointerMove}
-              onPointerUp={onSplitPointerUp}
-              onPointerCancel={onSplitPointerUp}
-            />
+            {showPatternPreview ? (
+              <>
+                <div
+                  className={`center-divider ${resizingPane ? 'dragging' : ''}`}
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="Resize editor and preview panes"
+                  onPointerDown={onSplitPointerDown}
+                  onPointerMove={onSplitPointerMove}
+                  onPointerUp={onSplitPointerUp}
+                  onPointerCancel={onSplitPointerUp}
+                />
 
-            <div className="center-pane">
-              <TilingPreview tile={project.tile} primitives={visiblePrimitives} pattern={pattern} />
-            </div>
+                <div className="center-pane">
+                  <TilingPreview tile={project.tile} primitives={visiblePrimitives} pattern={pattern} />
+                </div>
+              </>
+            ) : null}
           </div>
         </section>
 
@@ -580,6 +599,9 @@ export function App(): JSX.Element {
                   onChange={(event) => setEditorZoom(clampEditorZoom(Number(event.target.value)))}
                 />
               </label>
+              <button type="button" onClick={() => setShowPatternPreview((current) => !current)}>
+                {showPatternPreview ? 'Hide Pattern Preview' : 'Show Pattern Preview'}
+              </button>
             </div>
           </section>
 

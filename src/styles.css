@@ -280,6 +280,10 @@ button.active {
   display: grid;
 }
 
+.center-split.preview-hidden {
+  grid-template-columns: 1fr !important;
+}
+
 .center-pane {
   min-width: 0;
   min-height: 0;
@@ -459,6 +463,10 @@ button.active {
   .center-split {
     grid-template-columns: 1fr !important;
     grid-template-rows: minmax(280px, 1fr) minmax(280px, 1fr);
+  }
+
+  .center-split.preview-hidden {
+    grid-template-rows: 1fr !important;
   }
 
   .center-divider {
