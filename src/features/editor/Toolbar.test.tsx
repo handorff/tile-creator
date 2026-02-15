@@ -7,6 +7,7 @@ function buildToolbarProps() {
     shape: 'square' as const,
     activeTool: 'line' as const,
     activeColor: '#111',
+    visibleColors: ['#111', '#222'],
     colors: ['#111', '#222'],
     canUndo: false,
     canRedo: false,
@@ -16,6 +17,9 @@ function buildToolbarProps() {
     onShapeChange: vi.fn(),
     onToolChange: vi.fn(),
     onColorChange: vi.fn(),
+    onColorVisibilityChange: vi.fn(),
+    onAllColorsVisibilityChange: vi.fn(),
+    onOnlyVisibleColor: vi.fn(),
     onDuplicateSelection: vi.fn(),
     onSplitSelection: vi.fn(),
     onRotateSelectionCcw: vi.fn(),
@@ -35,6 +39,90 @@ describe('Toolbar', () => {
     expect(props.onColorChange).toHaveBeenCalledWith('#222');
     fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }));
     expect(props.onDuplicateSelection).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls color visibility callback when segmented control is changed to off', () => {
+    const props = buildToolbarProps();
+
+    const view = render(<Toolbar {...props} onColorVisibilityChange={props.onColorVisibilityChange} />);
+
+    fireEvent.click(within(view.container).getByTestId('visibility-off-#222'));
+
+    expect(props.onColorVisibilityChange).toHaveBeenCalledWith('#222', false);
+  });
+
+  it('calls color visibility callback when segmented control is changed to on', () => {
+    const props = buildToolbarProps();
+    const view = render(
+      <Toolbar
+        {...props}
+        visibleColors={['#111']}
+        onColorVisibilityChange={props.onColorVisibilityChange}
+      />
+    );
+
+    fireEvent.click(within(view.container).getByTestId('visibility-on-#222'));
+
+    expect(props.onColorVisibilityChange).toHaveBeenCalledWith('#222', true);
+  });
+
+  it('calls all-colors visibility callback from segmented control', () => {
+    const props = buildToolbarProps();
+    const view = render(
+      <Toolbar {...props} onAllColorsVisibilityChange={props.onAllColorsVisibilityChange} />
+    );
+
+    fireEvent.click(within(view.container).getByTestId('visibility-all-off'));
+    expect(props.onAllColorsVisibilityChange).toHaveBeenCalledWith(false);
+
+    fireEvent.click(within(view.container).getByTestId('visibility-all-on'));
+    expect(props.onAllColorsVisibilityChange).toHaveBeenCalledWith(true);
+  });
+
+  it('calls only-visible callback when only button is clicked', () => {
+    const props = buildToolbarProps();
+    const view = render(<Toolbar {...props} onOnlyVisibleColor={props.onOnlyVisibleColor} />);
+
+    fireEvent.click(within(view.container).getByTestId('visibility-only-#222'));
+
+    expect(props.onOnlyVisibleColor).toHaveBeenCalledWith('#222');
+  });
+
+  it('shows a checked state when a color is visible', () => {
+    const props = buildToolbarProps();
+    const view = render(<Toolbar {...props} visibleColors={['#111']} />);
+
+    expect(within(view.container).getByTestId('visibility-on-#111')).toHaveClass('active');
+    expect(within(view.container).getByTestId('visibility-off-#111')).not.toHaveClass('active');
+    expect(within(view.container).getByTestId('visibility-on-#222')).not.toHaveClass('active');
+    expect(within(view.container).getByTestId('visibility-off-#222')).toHaveClass('active');
+  });
+
+  it('calls color visibility callback with true when enabling hidden color', () => {
+    const props = buildToolbarProps();
+    const view = render(
+      <Toolbar
+        {...props}
+        visibleColors={['#111']}
+        onColorVisibilityChange={props.onColorVisibilityChange}
+      />
+    );
+
+    fireEvent.click(within(view.container).getByTestId('visibility-on-#222'));
+
+    expect(props.onColorVisibilityChange).toHaveBeenCalledWith('#222', true);
+  });
+
+  it('renders visibility section separately from color section', () => {
+    const props = buildToolbarProps();
+    const view = render(<Toolbar {...props} />);
+
+    expect(within(view.container).getByRole('heading', { name: 'Color' })).toBeInTheDocument();
+    expect(within(view.container).getByRole('heading', { name: 'Visibility' })).toBeInTheDocument();
+    expect(within(view.container).queryByTestId('visible-color')).toBeNull();
+    expect(within(view.container).getByText('All colors')).toBeInTheDocument();
+    expect(within(view.container).queryByText('#111')).toBeNull();
+    expect(within(view.container).queryByText('#222')).toBeNull();
   });
 
   it('disables undo/redo buttons from props', () => {

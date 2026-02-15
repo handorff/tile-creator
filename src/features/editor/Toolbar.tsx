@@ -17,6 +17,7 @@ interface ToolbarProps {
   shape: TileShape;
   activeTool: Tool;
   activeColor: string;
+  visibleColors: string[];
   colors: string[];
   canUndo: boolean;
   canRedo: boolean;
@@ -26,6 +27,9 @@ interface ToolbarProps {
   onShapeChange: (shape: TileShape) => void;
   onToolChange: (tool: Tool) => void;
   onColorChange: (color: string) => void;
+  onColorVisibilityChange: (color: string, visible: boolean) => void;
+  onAllColorsVisibilityChange: (visible: boolean) => void;
+  onOnlyVisibleColor: (color: string) => void;
   onDuplicateSelection: () => void;
   onSplitSelection: () => void;
   onRotateSelectionCcw: () => void;
@@ -45,6 +49,9 @@ const toolIcons: Record<Tool, LucideIcon> = {
 export function Toolbar(props: ToolbarProps): JSX.Element {
   const hasSelection = props.selectedCount > 0;
   const rotationStepLabel = props.shape === 'square' ? '90' : '60';
+  const visibleColors = new Set(props.visibleColors);
+  const allVisible = props.colors.length > 0 && props.colors.every((color) => visibleColors.has(color));
+  const allHidden = props.colors.length > 0 && props.colors.every((color) => !visibleColors.has(color));
 
   return (
     <aside className="toolbar">
@@ -96,6 +103,76 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
               style={{ backgroundColor: color }}
               onClick={() => props.onColorChange(color)}
             />
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h2>Visibility</h2>
+        <div className="visibility-all-controls">
+          <span>All colors</span>
+          <div className="segmented-control" role="group" aria-label="Toggle all colors visibility">
+            <button
+              type="button"
+              data-testid="visibility-all-on"
+              className={allVisible ? 'segmented-button active' : 'segmented-button'}
+              aria-pressed={allVisible}
+              onClick={() => props.onAllColorsVisibilityChange(true)}
+            >
+              On
+            </button>
+            <button
+              type="button"
+              data-testid="visibility-all-off"
+              className={allHidden ? 'segmented-button active' : 'segmented-button'}
+              aria-pressed={allHidden}
+              onClick={() => props.onAllColorsVisibilityChange(false)}
+            >
+              Off
+            </button>
+          </div>
+        </div>
+        <div className="visibility-list">
+          {props.colors.map((color) => (
+            <div key={`visibility-${color}`} className="visibility-item">
+              <span className="visibility-label" aria-hidden="true">
+                <span
+                  className="visibility-swatch"
+                  style={{ backgroundColor: color }}
+                />
+              </span>
+              <div className="visibility-actions">
+                <div className="segmented-control" role="group" aria-label={`Toggle color ${color}`}>
+                  <button
+                    type="button"
+                    data-testid={`visibility-on-${color}`}
+                    className={visibleColors.has(color) ? 'segmented-button active' : 'segmented-button'}
+                    aria-pressed={visibleColors.has(color)}
+                    onClick={() => props.onColorVisibilityChange(color, true)}
+                  >
+                    On
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`visibility-off-${color}`}
+                    className={!visibleColors.has(color) ? 'segmented-button active' : 'segmented-button'}
+                    aria-pressed={!visibleColors.has(color)}
+                    onClick={() => props.onColorVisibilityChange(color, false)}
+                  >
+                    Off
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  data-testid={`visibility-only-${color}`}
+                  aria-label={`Show only color ${color}`}
+                  className="visibility-only-button"
+                  onClick={() => props.onOnlyVisibleColor(color)}
+                >
+                  Only
+                </button>
+              </div>
+            </div>
           ))}
         </div>
       </section>

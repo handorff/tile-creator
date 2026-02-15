@@ -104,6 +104,7 @@ export function App(): JSX.Element {
   const initial = useMemo(loadInitialState, []);
   const [project, dispatch] = useReducer(projectReducer, initial.project);
   const [pattern, setPattern] = useState<PatternSize>(initial.pattern);
+  const [hiddenColors, setHiddenColors] = useState<string[]>([]);
   const [editorZoom, setEditorZoom] = useState<number>(1);
   const [selectedPrimitiveIds, setSelectedPrimitiveIds] = useState<string[]>([]);
   const [splitSelectionLineId, setSplitSelectionLineId] = useState<string | null>(null);
@@ -112,6 +113,11 @@ export function App(): JSX.Element {
   const centerSplitRef = useRef<HTMLDivElement | null>(null);
   const [editorPane, setEditorPane] = useState<number>(0.55);
   const [resizingPane, setResizingPane] = useState<boolean>(false);
+  const availableColors = useMemo(
+    () => Array.from(new Set([...DEFAULT_COLORS, ...project.primitives.map((primitive) => primitive.color)])),
+    [project.primitives]
+  );
+  const hiddenColorSet = useMemo(() => new Set(hiddenColors), [hiddenColors]);
 
   useEffect(() => {
     saveAutosave(project, pattern);
@@ -119,9 +125,17 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     setSelectedPrimitiveIds((current) =>
-      current.filter((id) => project.primitives.some((primitive) => primitive.id === id))
+      current.filter((id) =>
+        project.primitives.some(
+          (primitive) => primitive.id === id && !hiddenColorSet.has(primitive.color)
+        )
+      )
     );
-  }, [project.primitives]);
+  }, [hiddenColorSet, project.primitives]);
+
+  useEffect(() => {
+    setHiddenColors((current) => current.filter((color) => availableColors.includes(color)));
+  }, [availableColors]);
 
   const selectedLinePrimitive = useMemo(() => {
     if (selectedPrimitiveIds.length !== 1) {
@@ -138,6 +152,10 @@ export function App(): JSX.Element {
   const canSplitSelection = project.activeTool === 'select' && selectedLinePrimitive !== null;
   const splitSelectionArmed =
     canSplitSelection && !!selectedLinePrimitive && splitSelectionLineId === selectedLinePrimitive.id;
+  const visiblePrimitives = useMemo(
+    () => project.primitives.filter((primitive) => !hiddenColorSet.has(primitive.color)),
+    [hiddenColorSet, project.primitives]
+  );
 
   useEffect(() => {
     setSplitSelectionLineId((current) => {
@@ -178,6 +196,33 @@ export function App(): JSX.Element {
       color
     });
   };
+
+  const setColorVisibility = useCallback((color: string, visible: boolean): void => {
+    setHiddenColors((current) => {
+      const isHidden = current.includes(color);
+      if (visible && !isHidden) {
+        return current;
+      }
+      if (!visible && isHidden) {
+        return current;
+      }
+      return visible ? current.filter((currentColor) => currentColor !== color) : [...current, color];
+    });
+  }, []);
+
+  const setAllColorsVisibility = useCallback(
+    (visible: boolean): void => {
+      setHiddenColors(visible ? [] : [...availableColors]);
+    },
+    [availableColors]
+  );
+
+  const setOnlyVisibleColor = useCallback(
+    (color: string): void => {
+      setHiddenColors(availableColors.filter((availableColor) => availableColor !== color));
+    },
+    [availableColors]
+  );
 
   const setShape = (shape: TileShape): void => {
     dispatch({ type: 'set-tile-shape', shape });
@@ -422,7 +467,8 @@ export function App(): JSX.Element {
           shape={project.tile.shape}
           activeTool={project.activeTool}
           activeColor={project.activeColor}
-          colors={DEFAULT_COLORS}
+          visibleColors={availableColors.filter((color) => !hiddenColorSet.has(color))}
+          colors={availableColors}
           canUndo={project.history.past.length > 0}
           canRedo={project.history.future.length > 0}
           selectedCount={selectedPrimitiveIds.length}
@@ -431,6 +477,9 @@ export function App(): JSX.Element {
           onShapeChange={setShape}
           onToolChange={setTool}
           onColorChange={setColor}
+          onColorVisibilityChange={setColorVisibility}
+          onAllColorsVisibilityChange={setAllColorsVisibility}
+          onOnlyVisibleColor={setOnlyVisibleColor}
           onDuplicateSelection={duplicateSelected}
           onSplitSelection={toggleSplitSelection}
           onRotateSelectionCcw={() => rotateSelected(false)}
@@ -453,7 +502,7 @@ export function App(): JSX.Element {
             <div className="center-pane">
               <EditorCanvas
                 tile={project.tile}
-                primitives={project.primitives}
+                primitives={visiblePrimitives}
                 activeTool={project.activeTool}
                 activeColor={project.activeColor}
                 zoom={editorZoom}
@@ -480,7 +529,7 @@ export function App(): JSX.Element {
             />
 
             <div className="center-pane">
-              <TilingPreview tile={project.tile} primitives={project.primitives} pattern={pattern} />
+              <TilingPreview tile={project.tile} primitives={visiblePrimitives} pattern={pattern} />
             </div>
           </div>
         </section>

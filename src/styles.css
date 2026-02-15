@@ -177,6 +177,79 @@ button.active {
   outline-offset: 1px;
 }
 
+.visibility-list {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.visibility-all-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+  margin-bottom: 0.45rem;
+  font-size: 0.82rem;
+}
+
+.visibility-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+  font-size: 0.82rem;
+}
+
+.visibility-label {
+  display: inline-flex;
+  align-items: center;
+}
+
+.visibility-swatch {
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 0.2rem;
+  border: 1px solid #cbd5e1;
+}
+
+.visibility-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.segmented-control {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #94a3b8;
+  border-radius: 0.35rem;
+  overflow: hidden;
+}
+
+.segmented-button {
+  border: 0;
+  border-right: 1px solid #94a3b8;
+  border-radius: 0;
+  background: #f8fafc;
+  padding: 0.2rem 0.5rem;
+  min-width: 2.2rem;
+  font-size: 0.75rem;
+}
+
+.segmented-button:last-child {
+  border-right: 0;
+}
+
+.segmented-button.active {
+  background: #dbeafe;
+  color: #1e3a8a;
+}
+
+.visibility-only-button {
+  min-width: 3rem;
+  padding: 0.2rem 0.45rem;
+  font-size: 0.75rem;
+}
+
 .field {
   display: grid;
   gap: 0.35rem;
