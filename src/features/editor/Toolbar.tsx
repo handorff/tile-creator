@@ -1,4 +1,17 @@
+import {
+  Circle as CircleIcon,
+  Copy,
+  Eraser,
+  Hand,
+  MousePointer2,
+  RotateCcw,
+  RotateCw,
+  Scissors,
+  Slash,
+  type LucideIcon
+} from 'lucide-react';
 import type { TileShape, Tool } from '../../types/model';
+import { SELECTION_SHORTCUTS, TOOL_SHORTCUTS, formatShortcutKey } from './shortcuts';
 
 interface ToolbarProps {
   shape: TileShape;
@@ -18,14 +31,14 @@ interface ToolbarProps {
   onRedo: () => void;
 }
 
-const tools: Array<{ id: Tool; label: string }> = [
-  { id: 'select', label: 'Select' },
-  { id: 'line', label: 'Line' },
-  { id: 'circle', label: 'Circle' },
-  { id: 'split', label: 'Split' },
-  { id: 'pan', label: 'Pan' },
-  { id: 'erase', label: 'Erase' }
-];
+const toolIcons: Record<Tool, LucideIcon> = {
+  select: MousePointer2,
+  line: Slash,
+  circle: CircleIcon,
+  split: Scissors,
+  pan: Hand,
+  erase: Eraser
+};
 
 export function Toolbar(props: ToolbarProps): JSX.Element {
   const hasSelection = props.selectedCount > 0;
@@ -49,17 +62,22 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
 
       <section>
         <h2>Tools</h2>
-        <div className="button-row">
-          {tools.map((tool) => (
-            <button
-              key={tool.id}
-              type="button"
-              className={props.activeTool === tool.id ? 'active' : ''}
-              onClick={() => props.onToolChange(tool.id)}
-            >
-              {tool.label}
-            </button>
-          ))}
+        <div className="button-row tool-buttons">
+          {TOOL_SHORTCUTS.map((tool) => {
+            const ToolIcon = toolIcons[tool.tool];
+            return (
+              <button
+                key={tool.tool}
+                type="button"
+                aria-label={tool.label}
+                title={`${tool.label} tool (${formatShortcutKey(tool.key)})`}
+                className={props.activeTool === tool.tool ? 'icon-button active' : 'icon-button'}
+                onClick={() => props.onToolChange(tool.tool)}
+              >
+                <ToolIcon className="toolbar-icon" aria-hidden="true" />
+              </button>
+            );
+          })}
         </div>
       </section>
 
@@ -82,15 +100,36 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
 
       <section>
         <h2>Selection</h2>
-        <div className="button-row">
-          <button type="button" onClick={props.onDuplicateSelection} disabled={!hasSelection}>
-            Duplicate
+        <div className="button-row selection-buttons">
+          <button
+            type="button"
+            aria-label="Duplicate"
+            title={`Duplicate selected primitives (${formatShortcutKey(SELECTION_SHORTCUTS.duplicate)})`}
+            className="icon-button"
+            onClick={props.onDuplicateSelection}
+            disabled={!hasSelection}
+          >
+            <Copy className="toolbar-icon" aria-hidden="true" />
           </button>
-          <button type="button" onClick={props.onRotateSelectionCcw} disabled={!hasSelection}>
-            Rotate CCW ({rotationStepLabel} deg)
+          <button
+            type="button"
+            aria-label="Rotate counterclockwise"
+            title={`Rotate selection counterclockwise by ${rotationStepLabel} degrees (${formatShortcutKey(SELECTION_SHORTCUTS.rotateCcw)})`}
+            className="icon-button"
+            onClick={props.onRotateSelectionCcw}
+            disabled={!hasSelection}
+          >
+            <RotateCcw className="toolbar-icon" aria-hidden="true" />
           </button>
-          <button type="button" onClick={props.onRotateSelectionCw} disabled={!hasSelection}>
-            Rotate CW ({rotationStepLabel} deg)
+          <button
+            type="button"
+            aria-label="Rotate clockwise"
+            title={`Rotate selection clockwise by ${rotationStepLabel} degrees (${formatShortcutKey(SELECTION_SHORTCUTS.rotateCw)})`}
+            className="icon-button"
+            onClick={props.onRotateSelectionCw}
+            disabled={!hasSelection}
+          >
+            <RotateCw className="toolbar-icon" aria-hidden="true" />
           </button>
         </div>
       </section>

@@ -49,4 +49,19 @@ describe('Toolbar', () => {
     fireEvent.click(within(view.container).getByRole('button', { name: 'Redo' }));
     expect(props.onRedo).toHaveBeenCalledTimes(1);
   });
+
+  it('shows shortcut titles for tool and selection buttons', () => {
+    const props = buildToolbarProps();
+
+    const view = render(<Toolbar {...props} />);
+
+    expect(within(view.container).getByRole('button', { name: 'Line' })).toHaveAttribute(
+      'title',
+      'Line tool (L)'
+    );
+    expect(within(view.container).getByRole('button', { name: 'Duplicate' })).toHaveAttribute(
+      'title',
+      'Duplicate selected primitives (D)'
+    );
+  });
 });

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { EditorCanvas } from '../features/editor/EditorCanvas';
+import { SELECTION_SHORTCUTS, TOOL_SHORTCUT_BY_KEY } from '../features/editor/shortcuts';
 import { Toolbar } from '../features/editor/Toolbar';
 import { buildTiledSvg } from '../features/export/exportSvg';
 import {
@@ -49,6 +50,18 @@ function clampEditorPane(value: number): number {
     return 0.55;
   }
   return Math.min(MAX_EDITOR_PANE, Math.max(MIN_EDITOR_PANE, value));
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  if (target.isContentEditable || target.closest('[contenteditable="true"]')) {
+    return true;
+  }
+
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
 }
 
 function rotatePointAroundOrigin(point: Point, radians: number): Point {
@@ -104,29 +117,6 @@ export function App(): JSX.Element {
   }, [project, pattern]);
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      const key = event.key.toLowerCase();
-      const hasPrimaryModifier = event.metaKey || event.ctrlKey;
-      const undoCombo = hasPrimaryModifier && !event.shiftKey && key === 'z';
-      const redoCombo = (hasPrimaryModifier && event.shiftKey && key === 'z') || event.ctrlKey && key === 'y';
-
-      if (redoCombo) {
-        event.preventDefault();
-        dispatch({ type: 'redo' });
-        return;
-      }
-
-      if (undoCombo) {
-        event.preventDefault();
-        dispatch({ type: 'undo' });
-      }
-    };
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
-
-  useEffect(() => {
     setSelectedPrimitiveIds((current) =>
       current.filter((id) => project.primitives.some((primitive) => primitive.id === id))
     );
@@ -140,9 +130,9 @@ export function App(): JSX.Element {
     dispatch({ type: 'update-primitive', primitive });
   };
 
-  const setTool = (tool: Tool): void => {
+  const setTool = useCallback((tool: Tool): void => {
     dispatch({ type: 'set-tool', tool });
-  };
+  }, []);
 
   const setColor = (color: string): void => {
     dispatch({ type: 'set-color', color });
@@ -186,7 +176,7 @@ export function App(): JSX.Element {
     });
   };
 
-  const duplicateSelected = (): void => {
+  const duplicateSelected = useCallback((): void => {
     if (selectedPrimitiveIds.length === 0) {
       return;
     }
@@ -205,26 +195,87 @@ export function App(): JSX.Element {
 
     dispatch({ type: 'add-primitives', primitives: duplicates });
     setSelectedPrimitiveIds(duplicates.map((primitive) => primitive.id));
-  };
+  }, [project.primitives, selectedPrimitiveIds]);
 
-  const rotateSelected = (clockwise: boolean): void => {
-    if (selectedPrimitiveIds.length === 0) {
-      return;
-    }
+  const rotateSelected = useCallback(
+    (clockwise: boolean): void => {
+      if (selectedPrimitiveIds.length === 0) {
+        return;
+      }
 
-    const stepDegrees = project.tile.shape === 'square' ? 90 : 60;
-    const radians = ((clockwise ? stepDegrees : -stepDegrees) * Math.PI) / 180;
-    const selected = new Set(selectedPrimitiveIds);
-    const rotated = project.primitives
-      .filter((primitive) => selected.has(primitive.id))
-      .map((primitive) => rotatePrimitiveAroundOrigin(primitive, radians));
+      const stepDegrees = project.tile.shape === 'square' ? 90 : 60;
+      const radians = ((clockwise ? stepDegrees : -stepDegrees) * Math.PI) / 180;
+      const selected = new Set(selectedPrimitiveIds);
+      const rotated = project.primitives
+        .filter((primitive) => selected.has(primitive.id))
+        .map((primitive) => rotatePrimitiveAroundOrigin(primitive, radians));
 
-    if (rotated.length === 0) {
-      return;
-    }
+      if (rotated.length === 0) {
+        return;
+      }
 
-    dispatch({ type: 'update-primitives', primitives: rotated });
-  };
+      dispatch({ type: 'update-primitives', primitives: rotated });
+    },
+    [project.primitives, project.tile.shape, selectedPrimitiveIds]
+  );
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      const key = event.key.toLowerCase();
+      const hasPrimaryModifier = event.metaKey || event.ctrlKey;
+      const undoCombo = hasPrimaryModifier && !event.shiftKey && key === 'z';
+      const redoCombo =
+        (hasPrimaryModifier && event.shiftKey && key === 'z') || (event.ctrlKey && key === 'y');
+
+      if (redoCombo) {
+        event.preventDefault();
+        dispatch({ type: 'redo' });
+        return;
+      }
+
+      if (undoCombo) {
+        event.preventDefault();
+        dispatch({ type: 'undo' });
+        return;
+      }
+
+      if (
+        event.repeat ||
+        hasPrimaryModifier ||
+        event.altKey ||
+        isTypingTarget(event.target)
+      ) {
+        return;
+      }
+
+      const tool = TOOL_SHORTCUT_BY_KEY[key];
+      if (tool) {
+        event.preventDefault();
+        setTool(tool);
+        return;
+      }
+
+      if (key === SELECTION_SHORTCUTS.duplicate) {
+        event.preventDefault();
+        duplicateSelected();
+        return;
+      }
+
+      if (key === SELECTION_SHORTCUTS.rotateCcw) {
+        event.preventDefault();
+        rotateSelected(false);
+        return;
+      }
+
+      if (key === SELECTION_SHORTCUTS.rotateCw) {
+        event.preventDefault();
+        rotateSelected(true);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [duplicateSelected, rotateSelected, setTool]);
 
   const clearTile = (): void => {
     if (project.primitives.length === 0) {
