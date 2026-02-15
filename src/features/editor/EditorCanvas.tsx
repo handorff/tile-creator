@@ -30,6 +30,7 @@ interface EditorCanvasProps {
   onUpdatePrimitive: (primitive: Primitive) => void;
   onSplitLine: (id: string, point: Point) => void;
   onErasePrimitive: (id: string) => void;
+  onSelectionChange: (id: string | null) => void;
 }
 
 type DraftState =
@@ -208,7 +209,7 @@ function findNearestLine(point: Point, primitives: Primitive[], tolerance: numbe
 }
 
 export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
-  const { onZoomChange, zoom } = props;
+  const { onZoomChange, zoom, onSelectionChange, onErasePrimitive } = props;
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [draft, setDraft] = useState<DraftState>(null);
   const [drawing, setDrawing] = useState(false);
@@ -268,6 +269,10 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
       setSplitTargetLineId(null);
     }
   }, [props.activeTool]);
+
+  useEffect(() => {
+    onSelectionChange(selectedId);
+  }, [onSelectionChange, selectedId]);
 
   useEffect(() => {
     const svg = svgRef.current;
@@ -575,6 +580,38 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
   };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (!selectedId) {
+        return;
+      }
+
+      const key = event.key;
+      if (key !== 'Backspace' && key !== 'Delete') {
+        return;
+      }
+
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      onErasePrimitive(selectedId);
+      setSelectedId(null);
+      setEditDrag(null);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onErasePrimitive, selectedId]);
 
   const handleContextMenu = (event: React.MouseEvent<SVGSVGElement>): void => {
     event.preventDefault();
