@@ -11,10 +11,13 @@ function buildToolbarProps() {
     canUndo: false,
     canRedo: false,
     selectedCount: 1,
+    canSplitSelection: true,
+    splitSelectionArmed: false,
     onShapeChange: vi.fn(),
     onToolChange: vi.fn(),
     onColorChange: vi.fn(),
     onDuplicateSelection: vi.fn(),
+    onSplitSelection: vi.fn(),
     onRotateSelectionCcw: vi.fn(),
     onRotateSelectionCw: vi.fn(),
     onUndo: vi.fn(),
@@ -63,5 +66,20 @@ describe('Toolbar', () => {
       'title',
       'Duplicate selected primitives (D)'
     );
+    expect(within(view.container).getByRole('button', { name: 'Split' })).toHaveAttribute(
+      'title',
+      'Split selected line (X)'
+    );
+  });
+
+  it('disables split when selection cannot be split', () => {
+    const props = buildToolbarProps();
+    const view = render(<Toolbar {...props} canSplitSelection={false} />);
+
+    const splitButton = within(view.container).getByRole('button', { name: 'Split' });
+    expect(splitButton).toBeDisabled();
+
+    fireEvent.click(splitButton);
+    expect(props.onSplitSelection).not.toHaveBeenCalled();
   });
 });

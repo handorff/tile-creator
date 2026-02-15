@@ -75,4 +75,26 @@ describe('project storage', () => {
     expect(loaded.project).toEqual(project);
     expect(loaded.pattern).toEqual(pattern);
   });
+
+  it('normalizes legacy split tool to select', () => {
+    const payload = JSON.stringify({
+      version: 1,
+      project: {
+        tile: { shape: 'square', size: 120 },
+        primitives: [],
+        activeTool: 'split',
+        activeColor: '#111',
+        history: {
+          past: []
+        }
+      },
+      pattern: {
+        columns: 4,
+        rows: 3
+      }
+    });
+
+    const loaded = deserializeProject(payload);
+    expect(loaded.project.activeTool).toBe('select');
+  });
 });

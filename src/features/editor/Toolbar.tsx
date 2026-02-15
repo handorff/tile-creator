@@ -21,10 +21,13 @@ interface ToolbarProps {
   canUndo: boolean;
   canRedo: boolean;
   selectedCount: number;
+  canSplitSelection: boolean;
+  splitSelectionArmed: boolean;
   onShapeChange: (shape: TileShape) => void;
   onToolChange: (tool: Tool) => void;
   onColorChange: (color: string) => void;
   onDuplicateSelection: () => void;
+  onSplitSelection: () => void;
   onRotateSelectionCcw: () => void;
   onRotateSelectionCw: () => void;
   onUndo: () => void;
@@ -35,7 +38,6 @@ const toolIcons: Record<Tool, LucideIcon> = {
   select: MousePointer2,
   line: Slash,
   circle: CircleIcon,
-  split: Scissors,
   pan: Hand,
   erase: Eraser
 };
@@ -110,6 +112,16 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
             disabled={!hasSelection}
           >
             <Copy className="toolbar-icon" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            aria-label="Split"
+            title={`Split selected line (${formatShortcutKey(SELECTION_SHORTCUTS.split)})`}
+            className={props.splitSelectionArmed ? 'icon-button active' : 'icon-button'}
+            onClick={props.onSplitSelection}
+            disabled={!props.canSplitSelection}
+          >
+            <Scissors className="toolbar-icon" aria-hidden="true" />
           </button>
           <button
             type="button"

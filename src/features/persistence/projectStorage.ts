@@ -57,10 +57,21 @@ function isTool(value: unknown): value is Tool {
     value === 'select' ||
     value === 'line' ||
     value === 'circle' ||
-    value === 'split' ||
     value === 'erase' ||
     value === 'pan'
   );
+}
+
+function normalizeTool(value: unknown): Tool | null {
+  if (value === 'split') {
+    return 'select';
+  }
+
+  if (isTool(value)) {
+    return value;
+  }
+
+  return null;
 }
 
 function isTileShape(value: unknown): value is TileShape {
@@ -149,7 +160,8 @@ function normalizeProjectState(value: unknown): ProjectState | null {
     return null;
   }
 
-  if (!isTool(state.activeTool) || typeof state.activeColor !== 'string') {
+  const normalizedTool = normalizeTool(state.activeTool);
+  if (!normalizedTool || typeof state.activeColor !== 'string') {
     return null;
   }
 
@@ -164,7 +176,7 @@ function normalizeProjectState(value: unknown): ProjectState | null {
       size: tile.size
     },
     primitives: state.primitives,
-    activeTool: state.activeTool,
+    activeTool: normalizedTool,
     activeColor: state.activeColor,
     history
   };

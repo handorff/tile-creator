@@ -40,6 +40,7 @@ describe('EditorCanvas selection', () => {
         onZoomChange={vi.fn()}
         onAddPrimitive={vi.fn()}
         onUpdatePrimitive={vi.fn()}
+        splitSelectionLineId={null}
         onSplitLine={vi.fn()}
         onErasePrimitive={vi.fn()}
         onErasePrimitives={vi.fn()}
@@ -97,5 +98,52 @@ describe('EditorCanvas selection', () => {
       isPrimary: true
     });
     await waitFor(() => expect(onSelectionChange).toHaveBeenLastCalledWith([]));
+  });
+
+  it('splits the armed selected line when clicking a split point', async () => {
+    if (!window.PointerEvent) {
+      Object.defineProperty(window, 'PointerEvent', {
+        value: MouseEvent,
+        writable: true
+      });
+    }
+
+    const onSplitLine = vi.fn();
+    const { container } = render(
+      <EditorCanvas
+        tile={{ shape: 'square', size: 100 }}
+        primitives={primitives}
+        activeTool="select"
+        activeColor="#111111"
+        zoom={1}
+        onZoomChange={vi.fn()}
+        onAddPrimitive={vi.fn()}
+        onUpdatePrimitive={vi.fn()}
+        splitSelectionLineId="line-1"
+        onSplitLine={onSplitLine}
+        onErasePrimitive={vi.fn()}
+        onErasePrimitives={vi.fn()}
+        onSelectionChange={vi.fn()}
+      />
+    );
+
+    const canvas = container.querySelector('svg');
+    expect(canvas).not.toBeNull();
+    if (!canvas) {
+      return;
+    }
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 700, 700));
+
+    fireEvent.pointerDown(canvas, {
+      clientX: 380,
+      clientY: 370,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+
+    await waitFor(() => expect(onSplitLine).toHaveBeenCalledTimes(1));
+    expect(onSplitLine).toHaveBeenCalledWith('line-1', expect.any(Object));
   });
 });

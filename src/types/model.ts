@@ -1,6 +1,6 @@
 export type TileShape = 'square' | 'hex-pointy';
 
-export type Tool = 'select' | 'line' | 'circle' | 'split' | 'erase' | 'pan';
+export type Tool = 'select' | 'line' | 'circle' | 'erase' | 'pan';
 
 export interface Point {
   x: number;

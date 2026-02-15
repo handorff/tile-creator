@@ -126,9 +126,12 @@ button.active {
   gap: 0.35rem;
 }
 
-.tool-buttons,
-.selection-buttons {
+.tool-buttons {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.selection-buttons {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .icon-button {
