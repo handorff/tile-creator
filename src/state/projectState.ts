@@ -45,7 +45,9 @@ export type ProjectAction =
   | { type: 'recolor-primitives'; ids: string[]; color: string }
   | { type: 'set-tile-shape'; shape: TileShape }
   | { type: 'add-primitive'; primitive: Primitive }
+  | { type: 'add-primitives'; primitives: Primitive[] }
   | { type: 'update-primitive'; primitive: Primitive }
+  | { type: 'update-primitives'; primitives: Primitive[] }
   | { type: 'split-line'; id: string; point: Point; firstId: string; secondId: string }
   | { type: 'erase-primitive'; id: string }
   | { type: 'erase-primitives'; ids: string[] }
@@ -81,10 +83,18 @@ function setTileShape(state: ProjectState, shape: TileShape): ProjectState {
 }
 
 function addPrimitive(state: ProjectState, primitive: Primitive): ProjectState {
+  return addPrimitives(state, [primitive]);
+}
+
+function addPrimitives(state: ProjectState, primitives: Primitive[]): ProjectState {
+  if (primitives.length === 0) {
+    return state;
+  }
+
   const next = withHistory(state);
   return {
     ...next,
-    primitives: [...state.primitives, primitive]
+    primitives: [...state.primitives, ...primitives]
   };
 }
 
@@ -131,19 +141,31 @@ function samePrimitive(a: Primitive, b: Primitive): boolean {
 }
 
 function updatePrimitive(state: ProjectState, primitive: Primitive): ProjectState {
-  const index = state.primitives.findIndex((candidate) => candidate.id === primitive.id);
-  if (index < 0) {
+  return updatePrimitives(state, [primitive]);
+}
+
+function updatePrimitives(state: ProjectState, primitives: Primitive[]): ProjectState {
+  if (primitives.length === 0) {
     return state;
   }
 
-  if (samePrimitive(state.primitives[index], primitive)) {
+  const updates = new Map(primitives.map((primitive) => [primitive.id, primitive]));
+  let changed = false;
+  const updatedPrimitives = state.primitives.map((primitive) => {
+    const next = updates.get(primitive.id);
+    if (!next || samePrimitive(primitive, next)) {
+      return primitive;
+    }
+
+    changed = true;
+    return next;
+  });
+
+  if (!changed) {
     return state;
   }
 
   const next = withHistory(state);
-  const updatedPrimitives = [...state.primitives];
-  updatedPrimitives[index] = primitive;
-
   return {
     ...next,
     primitives: updatedPrimitives
@@ -278,8 +300,12 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return setTileShape(state, action.shape);
     case 'add-primitive':
       return addPrimitive(state, action.primitive);
+    case 'add-primitives':
+      return addPrimitives(state, action.primitives);
     case 'update-primitive':
       return updatePrimitive(state, action.primitive);
+    case 'update-primitives':
+      return updatePrimitives(state, action.primitives);
     case 'split-line':
       return splitLine(state, action.id, action.point, action.firstId, action.secondId);
     case 'erase-primitive':

@@ -16,7 +16,7 @@ import {
   initialProjectState,
   projectReducer
 } from '../state/projectState';
-import type { PatternSize, Primitive, ProjectState, TileShape, Tool } from '../types/model';
+import type { PatternSize, Point, Primitive, ProjectState, TileShape, Tool } from '../types/model';
 import { downloadText } from '../utils/download';
 import { createId } from '../utils/ids';
 
@@ -49,6 +49,30 @@ function clampEditorPane(value: number): number {
     return 0.55;
   }
   return Math.min(MAX_EDITOR_PANE, Math.max(MIN_EDITOR_PANE, value));
+}
+
+function rotatePointAroundOrigin(point: Point, radians: number): Point {
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  return {
+    x: point.x * cos - point.y * sin,
+    y: point.x * sin + point.y * cos
+  };
+}
+
+function rotatePrimitiveAroundOrigin(primitive: Primitive, radians: number): Primitive {
+  if (primitive.kind === 'line') {
+    return {
+      ...primitive,
+      a: rotatePointAroundOrigin(primitive.a, radians),
+      b: rotatePointAroundOrigin(primitive.b, radians)
+    };
+  }
+
+  return {
+    ...primitive,
+    center: rotatePointAroundOrigin(primitive.center, radians)
+  };
 }
 
 function loadInitialState(): InitialState {
@@ -152,6 +176,46 @@ export function App(): JSX.Element {
     });
   };
 
+  const duplicateSelected = (): void => {
+    if (selectedPrimitiveIds.length === 0) {
+      return;
+    }
+
+    const selected = new Set(selectedPrimitiveIds);
+    const duplicates = project.primitives
+      .filter((primitive) => selected.has(primitive.id))
+      .map((primitive) => ({
+        ...primitive,
+        id: createId(primitive.kind)
+      }));
+
+    if (duplicates.length === 0) {
+      return;
+    }
+
+    dispatch({ type: 'add-primitives', primitives: duplicates });
+    setSelectedPrimitiveIds(duplicates.map((primitive) => primitive.id));
+  };
+
+  const rotateSelected = (clockwise: boolean): void => {
+    if (selectedPrimitiveIds.length === 0) {
+      return;
+    }
+
+    const stepDegrees = project.tile.shape === 'square' ? 90 : 60;
+    const radians = ((clockwise ? stepDegrees : -stepDegrees) * Math.PI) / 180;
+    const selected = new Set(selectedPrimitiveIds);
+    const rotated = project.primitives
+      .filter((primitive) => selected.has(primitive.id))
+      .map((primitive) => rotatePrimitiveAroundOrigin(primitive, radians));
+
+    if (rotated.length === 0) {
+      return;
+    }
+
+    dispatch({ type: 'update-primitives', primitives: rotated });
+  };
+
   const clearTile = (): void => {
     if (project.primitives.length === 0) {
       return;
@@ -249,9 +313,13 @@ export function App(): JSX.Element {
           activeColor={project.activeColor}
           colors={DEFAULT_COLORS}
           canUndo={project.history.past.length > 0}
+          selectedCount={selectedPrimitiveIds.length}
           onShapeChange={setShape}
           onToolChange={setTool}
           onColorChange={setColor}
+          onDuplicateSelection={duplicateSelected}
+          onRotateSelectionCcw={() => rotateSelected(false)}
+          onRotateSelectionCw={() => rotateSelected(true)}
           onUndo={() => dispatch({ type: 'undo' })}
         />
 

@@ -6,9 +6,13 @@ interface ToolbarProps {
   activeColor: string;
   colors: string[];
   canUndo: boolean;
+  selectedCount: number;
   onShapeChange: (shape: TileShape) => void;
   onToolChange: (tool: Tool) => void;
   onColorChange: (color: string) => void;
+  onDuplicateSelection: () => void;
+  onRotateSelectionCcw: () => void;
+  onRotateSelectionCw: () => void;
   onUndo: () => void;
 }
 
@@ -22,6 +26,9 @@ const tools: Array<{ id: Tool; label: string }> = [
 ];
 
 export function Toolbar(props: ToolbarProps): JSX.Element {
+  const hasSelection = props.selectedCount > 0;
+  const rotationStepLabel = props.shape === 'square' ? '90' : '60';
+
   return (
     <aside className="toolbar">
       <section>
@@ -68,6 +75,21 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
               onClick={() => props.onColorChange(color)}
             />
           ))}
+        </div>
+      </section>
+
+      <section>
+        <h2>Selection</h2>
+        <div className="button-row">
+          <button type="button" onClick={props.onDuplicateSelection} disabled={!hasSelection}>
+            Duplicate
+          </button>
+          <button type="button" onClick={props.onRotateSelectionCcw} disabled={!hasSelection}>
+            Rotate CCW ({rotationStepLabel} deg)
+          </button>
+          <button type="button" onClick={props.onRotateSelectionCw} disabled={!hasSelection}>
+            Rotate CW ({rotationStepLabel} deg)
+          </button>
         </div>
       </section>
 

@@ -18,6 +18,34 @@ describe('project reducer', () => {
     expect(state.history.past).toHaveLength(1);
   });
 
+  it('adds multiple primitives in one action and undoes together', () => {
+    const state = projectReducer(initialProjectState, {
+      type: 'add-primitives',
+      primitives: [
+        {
+          id: 'line-1',
+          kind: 'line',
+          a: { x: 0, y: 0 },
+          b: { x: 10, y: 10 },
+          color: '#111'
+        },
+        {
+          id: 'line-2',
+          kind: 'line',
+          a: { x: 0, y: 10 },
+          b: { x: 10, y: 0 },
+          color: '#222'
+        }
+      ]
+    });
+
+    expect(state.primitives).toHaveLength(2);
+    expect(state.history.past).toHaveLength(1);
+
+    const undone = projectReducer(state, { type: 'undo' });
+    expect(undone.primitives).toHaveLength(0);
+  });
+
   it('erases primitive', () => {
     const withPrimitive = projectReducer(initialProjectState, {
       type: 'add-primitive',
@@ -146,6 +174,56 @@ describe('project reducer', () => {
       a: { x: 0, y: 0 },
       b: { x: 10, y: 10 }
     });
+  });
+
+  it('updates multiple primitives in one action and undoes together', () => {
+    const withFirst = projectReducer(initialProjectState, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-1',
+        kind: 'line',
+        a: { x: 0, y: 0 },
+        b: { x: 10, y: 0 },
+        color: '#111'
+      }
+    });
+    const withSecond = projectReducer(withFirst, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-2',
+        kind: 'line',
+        a: { x: 0, y: 10 },
+        b: { x: 10, y: 10 },
+        color: '#222'
+      }
+    });
+
+    const updated = projectReducer(withSecond, {
+      type: 'update-primitives',
+      primitives: [
+        {
+          id: 'line-1',
+          kind: 'line',
+          a: { x: 1, y: 1 },
+          b: { x: 11, y: 1 },
+          color: '#111'
+        },
+        {
+          id: 'line-2',
+          kind: 'line',
+          a: { x: 1, y: 11 },
+          b: { x: 11, y: 11 },
+          color: '#222'
+        }
+      ]
+    });
+
+    expect(updated.primitives[0]).toMatchObject({ a: { x: 1, y: 1 }, b: { x: 11, y: 1 } });
+    expect(updated.primitives[1]).toMatchObject({ a: { x: 1, y: 11 }, b: { x: 11, y: 11 } });
+
+    const undone = projectReducer(updated, { type: 'undo' });
+    expect(undone.primitives[0]).toMatchObject({ a: { x: 0, y: 0 }, b: { x: 10, y: 0 } });
+    expect(undone.primitives[1]).toMatchObject({ a: { x: 0, y: 10 }, b: { x: 10, y: 10 } });
   });
 
   it('changing tile shape clears primitives safely', () => {
