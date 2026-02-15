@@ -18,6 +18,7 @@ import type { Point, Primitive, TileConfig, Tool } from '../../types/model';
 import { createId } from '../../utils/ids';
 import { clamp, distance, dot, subtract } from '../../utils/math';
 import { PrimitiveSvg } from './PrimitiveSvg';
+import { mapClientPointToWorld, renderedViewBoxLayout } from './coordinates';
 
 interface EditorCanvasProps {
   tile: TileConfig;
@@ -104,9 +105,7 @@ function toWorldPoint(
   viewBox: { x: number; y: number; width: number; height: number }
 ): Point {
   const rect = event.currentTarget.getBoundingClientRect();
-  const x = ((event.clientX - rect.left) / rect.width) * viewBox.width + viewBox.x;
-  const y = ((event.clientY - rect.top) / rect.height) * viewBox.height + viewBox.y;
-  return { x, y };
+  return mapClientPointToWorld({ x: event.clientX, y: event.clientY }, rect, viewBox);
 }
 
 function polygonPath(points: Point[]): string {
@@ -461,10 +460,11 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
   const handlePointerMove = (event: ReactPointerEvent<SVGSVGElement>): void => {
     if (panDrag) {
       const rect = event.currentTarget.getBoundingClientRect();
+      const rendered = renderedViewBoxLayout(rect, viewBox);
       const deltaX = event.clientX - panDrag.clientX;
       const deltaY = event.clientY - panDrag.clientY;
-      const worldDeltaX = (deltaX / rect.width) * viewBox.width;
-      const worldDeltaY = (deltaY / rect.height) * viewBox.height;
+      const worldDeltaX = (deltaX / rendered.width) * viewBox.width;
+      const worldDeltaY = (deltaY / rendered.height) * viewBox.height;
 
       setPanOffset({
         x: panDrag.startOffset.x - worldDeltaX,
