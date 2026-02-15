@@ -11,6 +11,29 @@ import { clamp, distance, dot, subtract } from '../utils/math';
 
 const DEFAULT_TILE_SIZE = 120;
 export const FIXED_STROKE_WIDTH = 2;
+export const MIN_STROKE_WIDTH = 0.5;
+export const MAX_STROKE_WIDTH = 4;
+export const STROKE_WIDTH_STEP = 0.5;
+
+function normalizeStrokeWidth(value: number | undefined): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return FIXED_STROKE_WIDTH;
+  }
+
+  const clamped = Math.min(MAX_STROKE_WIDTH, Math.max(MIN_STROKE_WIDTH, value));
+  return Math.round(clamped / STROKE_WIDTH_STEP) * STROKE_WIDTH_STEP;
+}
+
+export function getPrimitiveStrokeWidth(primitive: Primitive): number {
+  return normalizeStrokeWidth(primitive.strokeWidth);
+}
+
+function withNormalizedStrokeWidth(primitive: Primitive): Primitive {
+  return {
+    ...primitive,
+    strokeWidth: normalizeStrokeWidth(primitive.strokeWidth)
+  };
+}
 
 export const DEFAULT_PATTERN: PatternSize = {
   columns: 4,
@@ -34,6 +57,7 @@ export const initialProjectState: ProjectState = {
   primitives: [],
   activeTool: 'line',
   activeColor: DEFAULT_COLORS[0],
+  activeStrokeWidth: FIXED_STROKE_WIDTH,
   history: {
     past: [],
     future: []
@@ -43,7 +67,9 @@ export const initialProjectState: ProjectState = {
 export type ProjectAction =
   | { type: 'set-tool'; tool: Tool }
   | { type: 'set-color'; color: string }
+  | { type: 'set-stroke-width'; strokeWidth: number }
   | { type: 'recolor-primitives'; ids: string[]; color: string }
+  | { type: 'restroke-primitives'; ids: string[]; strokeWidth: number }
   | { type: 'set-tile-shape'; shape: TileShape }
   | { type: 'add-primitive'; primitive: Primitive }
   | { type: 'add-primitives'; primitives: Primitive[] }
@@ -91,10 +117,11 @@ function setTileShape(state: ProjectState, shape: TileShape): ProjectState {
 }
 
 function addPrimitive(state: ProjectState, primitive: Primitive): ProjectState {
-  const next = withHistory(state, primitive.kind === 'line' ? 'Add line' : 'Add circle');
+  const normalized = withNormalizedStrokeWidth(primitive);
+  const next = withHistory(state, normalized.kind === 'line' ? 'Add line' : 'Add circle');
   return {
     ...next,
-    primitives: [...state.primitives, primitive]
+    primitives: [...state.primitives, normalized]
   };
 }
 
@@ -103,10 +130,11 @@ function addPrimitives(state: ProjectState, primitives: Primitive[]): ProjectSta
     return state;
   }
 
+  const normalizedPrimitives = primitives.map(withNormalizedStrokeWidth);
   const next = withHistory(state, describeShapeCount('Add', primitives.length));
   return {
     ...next,
-    primitives: [...state.primitives, ...primitives]
+    primitives: [...state.primitives, ...normalizedPrimitives]
   };
 }
 
@@ -140,7 +168,12 @@ function samePoint(a: { x: number; y: number }, b: { x: number; y: number }): bo
 }
 
 function samePrimitive(a: Primitive, b: Primitive): boolean {
-  if (a.kind !== b.kind || a.id !== b.id || a.color !== b.color) {
+  if (
+    a.kind !== b.kind ||
+    a.id !== b.id ||
+    a.color !== b.color ||
+    getPrimitiveStrokeWidth(a) !== getPrimitiveStrokeWidth(b)
+  ) {
     return false;
   }
 
@@ -164,7 +197,9 @@ function updatePrimitives(state: ProjectState, primitives: Primitive[]): Project
     return state;
   }
 
-  const updates = new Map(primitives.map((primitive) => [primitive.id, primitive]));
+  const updates = new Map(
+    primitives.map((primitive) => [primitive.id, withNormalizedStrokeWidth(primitive)])
+  );
   let changedCount = 0;
   const updatedPrimitives = state.primitives.map((primitive) => {
     const next = updates.get(primitive.id);
@@ -217,6 +252,37 @@ function recolorPrimitives(state: ProjectState, ids: string[], color: string): P
   };
 }
 
+function restrokePrimitives(state: ProjectState, ids: string[], strokeWidth: number): ProjectState {
+  if (ids.length === 0) {
+    return state;
+  }
+
+  const normalizedStrokeWidth = normalizeStrokeWidth(strokeWidth);
+  const selected = new Set(ids);
+  let changedCount = 0;
+  const updatedPrimitives = state.primitives.map((primitive) => {
+    if (!selected.has(primitive.id) || getPrimitiveStrokeWidth(primitive) === normalizedStrokeWidth) {
+      return primitive;
+    }
+
+    changedCount += 1;
+    return {
+      ...primitive,
+      strokeWidth: normalizedStrokeWidth
+    };
+  });
+
+  if (changedCount === 0) {
+    return state;
+  }
+
+  const next = withHistory(state, describeShapeCount('Change stroke', changedCount));
+  return {
+    ...next,
+    primitives: updatedPrimitives
+  };
+}
+
 function distanceToSegment(point: Point, a: Point, b: Point): number {
   const ab = subtract(b, a);
   const ap = subtract(point, a);
@@ -261,14 +327,16 @@ function splitLine(
     kind: 'line',
     a: candidate.a,
     b: point,
-    color: candidate.color
+    color: candidate.color,
+    strokeWidth: getPrimitiveStrokeWidth(candidate)
   };
   const second: Primitive = {
     id: secondId,
     kind: 'line',
     a: point,
     b: candidate.b,
-    color: candidate.color
+    color: candidate.color,
+    strokeWidth: getPrimitiveStrokeWidth(candidate)
   };
 
   const updated = [...state.primitives];
@@ -330,8 +398,15 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
         ...state,
         activeColor: action.color
       };
+    case 'set-stroke-width':
+      return {
+        ...state,
+        activeStrokeWidth: normalizeStrokeWidth(action.strokeWidth)
+      };
     case 'recolor-primitives':
       return recolorPrimitives(state, action.ids, action.color);
+    case 'restroke-primitives':
+      return restrokePrimitives(state, action.ids, action.strokeWidth);
     case 'set-tile-shape':
       return setTileShape(state, action.shape);
     case 'add-primitive':

@@ -10,6 +10,7 @@ import {
   Slash,
   type LucideIcon
 } from 'lucide-react';
+import { MAX_STROKE_WIDTH, MIN_STROKE_WIDTH, STROKE_WIDTH_STEP } from '../../state/projectState';
 import type { TileShape, Tool } from '../../types/model';
 import { SELECTION_SHORTCUTS, TOOL_SHORTCUTS, formatShortcutKey } from './shortcuts';
 
@@ -17,6 +18,7 @@ interface ToolbarProps {
   shape: TileShape;
   activeTool: Tool;
   activeColor: string;
+  activeStrokeWidth: number;
   visibleColors: string[];
   colors: string[];
   canUndo: boolean;
@@ -27,6 +29,7 @@ interface ToolbarProps {
   onShapeChange: (shape: TileShape) => void;
   onToolChange: (tool: Tool) => void;
   onColorChange: (color: string) => void;
+  onStrokeWidthChange: (strokeWidth: number) => void;
   onColorVisibilityChange: (color: string, visible: boolean) => void;
   onAllColorsVisibilityChange: (visible: boolean) => void;
   onOnlyVisibleColor: (color: string) => void;
@@ -105,6 +108,22 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
             />
           ))}
         </div>
+      </section>
+
+      <section>
+        <h2>Stroke Weight</h2>
+        <label className="field">
+          Weight ({props.activeStrokeWidth.toFixed(1)})
+          <input
+            data-testid="stroke-width-slider"
+            type="range"
+            min={MIN_STROKE_WIDTH}
+            max={MAX_STROKE_WIDTH}
+            step={STROKE_WIDTH_STEP}
+            value={props.activeStrokeWidth}
+            onChange={(event) => props.onStrokeWidthChange(Number(event.target.value))}
+          />
+        </label>
       </section>
 
       <section>

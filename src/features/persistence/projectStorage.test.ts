@@ -44,6 +44,8 @@ describe('project storage', () => {
       'line-1',
       'circle-1'
     ]);
+    expect(loaded.project.activeStrokeWidth).toBe(2);
+    expect(loaded.project.primitives.map((primitive) => primitive.strokeWidth)).toEqual([2, 2]);
   });
 
   it('round-trips projects using new history format', () => {
@@ -52,6 +54,7 @@ describe('project storage', () => {
       primitives: [],
       activeTool: 'line',
       activeColor: '#111',
+      activeStrokeWidth: 2,
       history: {
         past: [
           {

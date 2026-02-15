@@ -13,7 +13,7 @@ import {
   polygonBounds,
   translatePrimitive
 } from '../../geometry';
-import { FIXED_STROKE_WIDTH } from '../../state/projectState';
+import { getPrimitiveStrokeWidth } from '../../state/projectState';
 import type { Point, Primitive, TileConfig, Tool } from '../../types/model';
 import { createId } from '../../utils/ids';
 import { clamp, distance, dot, subtract } from '../../utils/math';
@@ -25,6 +25,7 @@ interface EditorCanvasProps {
   primitives: Primitive[];
   activeTool: Tool;
   activeColor: string;
+  activeStrokeWidth: number;
   zoom: number;
   onZoomChange: (nextZoom: number) => void;
   onAddPrimitive: (primitive: Primitive) => void;
@@ -277,7 +278,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
   const splitTargetLine = useMemo(
     () =>
       renderedPrimitives.find(
-        (primitive) =>
+        (primitive): primitive is Extract<Primitive, { kind: 'line' }> =>
           primitive.id === props.splitSelectionLineId && primitive.kind === 'line'
       ) ?? null,
     [props.splitSelectionLineId, renderedPrimitives]
@@ -519,7 +520,8 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
             kind: 'line',
             a: draft.start,
             b: draft.end,
-            color: props.activeColor
+            color: props.activeColor,
+            strokeWidth: props.activeStrokeWidth
           });
         }
       } else if (draft.radius > DRAW_MIN_DISTANCE) {
@@ -528,7 +530,8 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
           kind: 'circle',
           center: draft.center,
           radius: draft.radius,
-          color: props.activeColor
+          color: props.activeColor,
+          strokeWidth: props.activeStrokeWidth
         });
       }
     }
@@ -609,7 +612,6 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
                 <PrimitiveSvg
                   key={`${primitive.id}-${idx}`}
                   primitive={moved}
-                  strokeWidth={FIXED_STROKE_WIDTH}
                 />
               );
             })
@@ -633,7 +635,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
               <PrimitiveSvg
                 key={`selected-${primitive.id}`}
                 primitive={primitive}
-                strokeWidth={FIXED_STROKE_WIDTH * 2}
+                strokeWidth={Math.max(2, getPrimitiveStrokeWidth(primitive) + 1)}
                 className="selected-primitive"
               />
             ))
@@ -642,7 +644,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
         {splitTargetLine ? (
           <PrimitiveSvg
             primitive={splitTargetLine}
-            strokeWidth={FIXED_STROKE_WIDTH * 2}
+            strokeWidth={Math.max(2, getPrimitiveStrokeWidth(splitTargetLine) + 1)}
             className="split-target-primitive"
           />
         ) : null}
@@ -703,7 +705,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
             x2={draft.end.x}
             y2={draft.end.y}
             stroke={props.activeColor}
-            strokeWidth={FIXED_STROKE_WIDTH}
+            strokeWidth={props.activeStrokeWidth}
           />
         ) : null}
 
@@ -714,7 +716,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
             cy={draft.center.y}
             r={draft.radius}
             stroke={props.activeColor}
-            strokeWidth={FIXED_STROKE_WIDTH}
+            strokeWidth={props.activeStrokeWidth}
             fill="none"
           />
         ) : null}

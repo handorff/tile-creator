@@ -204,6 +204,20 @@ export function App(): JSX.Element {
     });
   };
 
+  const setStrokeWidth = (strokeWidth: number): void => {
+    dispatch({ type: 'set-stroke-width', strokeWidth });
+
+    if (selectedPrimitiveIds.length === 0) {
+      return;
+    }
+
+    dispatch({
+      type: 'restroke-primitives',
+      ids: selectedPrimitiveIds,
+      strokeWidth
+    });
+  };
+
   const setColorVisibility = useCallback((color: string, visible: boolean): void => {
     setHiddenColors((current) => {
       const isHidden = current.includes(color);
@@ -478,6 +492,7 @@ export function App(): JSX.Element {
           shape={project.tile.shape}
           activeTool={project.activeTool}
           activeColor={project.activeColor}
+          activeStrokeWidth={project.activeStrokeWidth}
           visibleColors={availableColors.filter((color) => !hiddenColorSet.has(color))}
           colors={availableColors}
           canUndo={project.history.past.length > 0}
@@ -488,6 +503,7 @@ export function App(): JSX.Element {
           onShapeChange={setShape}
           onToolChange={setTool}
           onColorChange={setColor}
+          onStrokeWidthChange={setStrokeWidth}
           onColorVisibilityChange={setColorVisibility}
           onAllColorsVisibilityChange={setAllColorsVisibility}
           onOnlyVisibleColor={setOnlyVisibleColor}
@@ -520,6 +536,7 @@ export function App(): JSX.Element {
                 primitives={visiblePrimitives}
                 activeTool={project.activeTool}
                 activeColor={project.activeColor}
+                activeStrokeWidth={project.activeStrokeWidth}
                 zoom={editorZoom}
                 onZoomChange={(nextZoom) => setEditorZoom(clampEditorZoom(nextZoom))}
                 onAddPrimitive={addPrimitive}

@@ -6,12 +6,14 @@ import {
 } from '../../geometry';
 import type { ExportOptions, Primitive, ProjectState, TileConfig } from '../../types/model';
 import { translatePrimitive } from '../../geometry/transforms';
+import { getPrimitiveStrokeWidth } from '../../state/projectState';
 
 function polygonPoints(points: { x: number; y: number }[]): string {
   return points.map((point) => `${point.x},${point.y}`).join(' ');
 }
 
-function primitiveSvg(primitive: Primitive, strokeWidth: number): string {
+function primitiveSvg(primitive: Primitive): string {
+  const strokeWidth = getPrimitiveStrokeWidth(primitive);
   if (primitive.kind === 'line') {
     return `<line x1="${primitive.a.x}" y1="${primitive.a.y}" x2="${primitive.b.x}" y2="${primitive.b.y}" stroke="${primitive.color}" stroke-width="${strokeWidth}" fill="none" />`;
   }
@@ -84,8 +86,7 @@ export function buildTiledSvg(projectState: ProjectState, options: ExportOptions
             translatePrimitive(primitive, {
               x: offset.x + neighbor.x,
               y: offset.y + neighbor.y
-            }),
-            2
+            })
           )
         )
       );

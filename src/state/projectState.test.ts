@@ -337,6 +337,41 @@ describe('project reducer', () => {
     expect(undone.primitives.map((primitive) => primitive.color)).toEqual(['#111', '#222']);
   });
 
+  it('updates stroke width on selected primitives in one history step', () => {
+    const withFirst = projectReducer(initialProjectState, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-1',
+        kind: 'line',
+        a: { x: 0, y: 0 },
+        b: { x: 10, y: 0 },
+        color: '#111'
+      }
+    });
+    const withBoth = projectReducer(withFirst, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-2',
+        kind: 'line',
+        a: { x: 0, y: 10 },
+        b: { x: 10, y: 10 },
+        color: '#222'
+      }
+    });
+
+    const restroked = projectReducer(withBoth, {
+      type: 'restroke-primitives',
+      ids: ['line-1', 'line-2'],
+      strokeWidth: 3.5
+    });
+
+    expect(restroked.primitives.map((primitive) => primitive.strokeWidth)).toEqual([3.5, 3.5]);
+    expect(restroked.history.past).toHaveLength(withBoth.history.past.length + 1);
+
+    const undone = projectReducer(restroked, { type: 'undo' });
+    expect(undone.primitives.map((primitive) => primitive.strokeWidth)).toEqual([2, 2]);
+  });
+
   it('redo reapplies last undone action', () => {
     const one = projectReducer(initialProjectState, {
       type: 'add-primitive',

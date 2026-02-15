@@ -1,12 +1,15 @@
 import type { Primitive } from '../../types/model';
+import { getPrimitiveStrokeWidth } from '../../state/projectState';
 
 interface PrimitiveSvgProps {
   primitive: Primitive;
-  strokeWidth: number;
+  strokeWidth?: number;
   className?: string;
 }
 
 export function PrimitiveSvg({ primitive, strokeWidth, className }: PrimitiveSvgProps): JSX.Element {
+  const width = strokeWidth ?? getPrimitiveStrokeWidth(primitive);
+
   if (primitive.kind === 'line') {
     return (
       <line
@@ -16,7 +19,7 @@ export function PrimitiveSvg({ primitive, strokeWidth, className }: PrimitiveSvg
         x2={primitive.b.x}
         y2={primitive.b.y}
         stroke={primitive.color}
-        strokeWidth={strokeWidth}
+        strokeWidth={width}
         fill="none"
       />
     );
@@ -29,7 +32,7 @@ export function PrimitiveSvg({ primitive, strokeWidth, className }: PrimitiveSvg
       cy={primitive.center.y}
       r={primitive.radius}
       stroke={primitive.color}
-      strokeWidth={strokeWidth}
+      strokeWidth={width}
       fill="none"
     />
   );

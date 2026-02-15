@@ -13,6 +13,7 @@ export interface LinePrimitive {
   a: Point;
   b: Point;
   color: string;
+  strokeWidth?: number;
 }
 
 export interface CirclePrimitive {
@@ -21,6 +22,7 @@ export interface CirclePrimitive {
   center: Point;
   radius: number;
   color: string;
+  strokeWidth?: number;
 }
 
 export type Primitive = LinePrimitive | CirclePrimitive;
@@ -50,6 +52,7 @@ export interface ProjectState {
   primitives: Primitive[];
   activeTool: Tool;
   activeColor: string;
+  activeStrokeWidth: number;
   history: HistoryState;
 }
 

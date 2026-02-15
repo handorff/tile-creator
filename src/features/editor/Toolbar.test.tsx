@@ -7,6 +7,7 @@ function buildToolbarProps() {
     shape: 'square' as const,
     activeTool: 'line' as const,
     activeColor: '#111',
+    activeStrokeWidth: 2,
     visibleColors: ['#111', '#222'],
     colors: ['#111', '#222'],
     canUndo: false,
@@ -17,6 +18,7 @@ function buildToolbarProps() {
     onShapeChange: vi.fn(),
     onToolChange: vi.fn(),
     onColorChange: vi.fn(),
+    onStrokeWidthChange: vi.fn(),
     onColorVisibilityChange: vi.fn(),
     onAllColorsVisibilityChange: vi.fn(),
     onOnlyVisibleColor: vi.fn(),
@@ -39,6 +41,16 @@ describe('Toolbar', () => {
     expect(props.onColorChange).toHaveBeenCalledWith('#222');
     fireEvent.click(screen.getByRole('button', { name: 'Duplicate' }));
     expect(props.onDuplicateSelection).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls stroke-width callback when slider changes', () => {
+    const props = buildToolbarProps();
+    const view = render(<Toolbar {...props} onStrokeWidthChange={props.onStrokeWidthChange} />);
+
+    fireEvent.change(within(view.container).getByTestId('stroke-width-slider'), {
+      target: { value: '3.5' }
+    });
+    expect(props.onStrokeWidthChange).toHaveBeenCalledWith(3.5);
   });
 
   it('calls color visibility callback when segmented control is changed to off', () => {

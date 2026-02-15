@@ -6,7 +6,6 @@ import {
   translatePoints,
   translatePrimitive
 } from '../../geometry';
-import { FIXED_STROKE_WIDTH } from '../../state/projectState';
 import type { PatternSize, Primitive, TileConfig } from '../../types/model';
 import { PrimitiveSvg } from '../editor/PrimitiveSvg';
 
@@ -108,7 +107,6 @@ export function TilingPreview(props: TilingPreviewProps): JSX.Element {
                         x: offset.x + neighbor.x,
                         y: offset.y + neighbor.y
                       })}
-                      strokeWidth={FIXED_STROKE_WIDTH}
                     />
                   ))
                 )}

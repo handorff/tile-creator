@@ -7,6 +7,12 @@ import type {
   TileShape,
   Tool
 } from '../../types/model';
+import {
+  FIXED_STROKE_WIDTH,
+  MAX_STROKE_WIDTH,
+  MIN_STROKE_WIDTH,
+  STROKE_WIDTH_STEP
+} from '../../state/projectState';
 
 const STORAGE_KEY = 'tile-creator-project-v1';
 const VERSION = 1;
@@ -14,6 +20,15 @@ const VERSION = 1;
 interface LoadResult {
   project: ProjectState;
   pattern: PatternSize;
+}
+
+function normalizeStrokeWidth(value: unknown): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return FIXED_STROKE_WIDTH;
+  }
+
+  const clamped = Math.min(MAX_STROKE_WIDTH, Math.max(MIN_STROKE_WIDTH, value));
+  return Math.round(clamped / STROKE_WIDTH_STEP) * STROKE_WIDTH_STEP;
 }
 
 function isPoint(value: unknown): value is { x: number; y: number } {
@@ -35,6 +50,7 @@ function isPrimitive(value: unknown): value is Primitive {
     return (
       typeof primitive.id === 'string' &&
       typeof primitive.color === 'string' &&
+      (primitive.strokeWidth === undefined || typeof primitive.strokeWidth === 'number') &&
       isPoint(primitive.a) &&
       isPoint(primitive.b)
     );
@@ -44,6 +60,7 @@ function isPrimitive(value: unknown): value is Primitive {
     return (
       typeof primitive.id === 'string' &&
       typeof primitive.color === 'string' &&
+      (primitive.strokeWidth === undefined || typeof primitive.strokeWidth === 'number') &&
       isPoint(primitive.center) &&
       typeof primitive.radius === 'number'
     );
@@ -170,14 +187,20 @@ function normalizeProjectState(value: unknown): ProjectState | null {
     return null;
   }
 
+  const normalizedPrimitives = state.primitives.map((primitive) => ({
+    ...primitive,
+    strokeWidth: normalizeStrokeWidth(primitive.strokeWidth)
+  }));
+
   return {
     tile: {
       shape: tile.shape,
       size: tile.size
     },
-    primitives: state.primitives,
+    primitives: normalizedPrimitives,
     activeTool: normalizedTool,
     activeColor: state.activeColor,
+    activeStrokeWidth: normalizeStrokeWidth(state.activeStrokeWidth),
     history
   };
 }
