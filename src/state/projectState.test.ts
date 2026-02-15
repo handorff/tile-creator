@@ -16,6 +16,8 @@ describe('project reducer', () => {
 
     expect(state.primitives).toHaveLength(1);
     expect(state.history.past).toHaveLength(1);
+    expect(state.history.past[0].description).toBe('Add line');
+    expect(state.history.future).toHaveLength(0);
   });
 
   it('adds multiple primitives in one action and undoes together', () => {
@@ -333,5 +335,147 @@ describe('project reducer', () => {
 
     const undone = projectReducer(recolored, { type: 'undo' });
     expect(undone.primitives.map((primitive) => primitive.color)).toEqual(['#111', '#222']);
+  });
+
+  it('redo reapplies last undone action', () => {
+    const one = projectReducer(initialProjectState, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-1',
+        kind: 'line',
+        a: { x: 0, y: 0 },
+        b: { x: 10, y: 10 },
+        color: '#111'
+      }
+    });
+    const two = projectReducer(one, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-2',
+        kind: 'line',
+        a: { x: 10, y: 0 },
+        b: { x: 0, y: 10 },
+        color: '#222'
+      }
+    });
+
+    const undone = projectReducer(two, { type: 'undo' });
+    const redone = projectReducer(undone, { type: 'redo' });
+
+    expect(redone.primitives.map((primitive) => primitive.id)).toEqual(['line-1', 'line-2']);
+    expect(redone.history.future).toHaveLength(0);
+  });
+
+  it('multiple undo then redo replays in order', () => {
+    const one = projectReducer(initialProjectState, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-1',
+        kind: 'line',
+        a: { x: 0, y: 0 },
+        b: { x: 10, y: 0 },
+        color: '#111'
+      }
+    });
+    const two = projectReducer(one, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-2',
+        kind: 'line',
+        a: { x: 0, y: 10 },
+        b: { x: 10, y: 10 },
+        color: '#222'
+      }
+    });
+    const three = projectReducer(two, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-3',
+        kind: 'line',
+        a: { x: 5, y: 0 },
+        b: { x: 5, y: 10 },
+        color: '#333'
+      }
+    });
+
+    const undoneOnce = projectReducer(three, { type: 'undo' });
+    const undoneTwice = projectReducer(undoneOnce, { type: 'undo' });
+    expect(undoneTwice.primitives.map((primitive) => primitive.id)).toEqual(['line-1']);
+
+    const redoneOnce = projectReducer(undoneTwice, { type: 'redo' });
+    expect(redoneOnce.primitives.map((primitive) => primitive.id)).toEqual(['line-1', 'line-2']);
+
+    const redoneTwice = projectReducer(redoneOnce, { type: 'redo' });
+    expect(redoneTwice.primitives.map((primitive) => primitive.id)).toEqual([
+      'line-1',
+      'line-2',
+      'line-3'
+    ]);
+  });
+
+  it('new action after undo clears redo stack', () => {
+    const one = projectReducer(initialProjectState, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-1',
+        kind: 'line',
+        a: { x: 0, y: 0 },
+        b: { x: 10, y: 10 },
+        color: '#111'
+      }
+    });
+    const two = projectReducer(one, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-2',
+        kind: 'line',
+        a: { x: 10, y: 0 },
+        b: { x: 0, y: 10 },
+        color: '#222'
+      }
+    });
+    const undone = projectReducer(two, { type: 'undo' });
+    expect(undone.history.future).toHaveLength(1);
+
+    const afterNewAction = projectReducer(undone, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-3',
+        kind: 'line',
+        a: { x: 3, y: 3 },
+        b: { x: 8, y: 8 },
+        color: '#333'
+      }
+    });
+
+    expect(afterNewAction.primitives.map((primitive) => primitive.id)).toEqual(['line-1', 'line-3']);
+    expect(afterNewAction.history.future).toHaveLength(0);
+  });
+
+  it('redo with empty future is a no-op', () => {
+    const state = projectReducer(initialProjectState, { type: 'redo' });
+    expect(state).toBe(initialProjectState);
+  });
+
+  it('stores concise history descriptions for action types', () => {
+    const addOne = projectReducer(initialProjectState, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-1',
+        kind: 'line',
+        a: { x: 0, y: 0 },
+        b: { x: 10, y: 10 },
+        color: '#111'
+      }
+    });
+
+    const recolored = projectReducer(addOne, {
+      type: 'recolor-primitives',
+      ids: ['line-1'],
+      color: '#222'
+    });
+
+    expect(addOne.history.past[0].description).toBe('Add line');
+    expect(recolored.history.past[1].description).toBe('Recolor 1 shape');
   });
 });

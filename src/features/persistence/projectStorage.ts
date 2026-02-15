@@ -1,4 +1,5 @@
 import type {
+  HistoryEntry,
   PatternSize,
   PersistedProject,
   Primitive,
@@ -80,42 +81,93 @@ function isPattern(value: unknown): value is PatternSize {
   );
 }
 
-function isProjectState(value: unknown): value is ProjectState {
+function isHistoryEntry(value: unknown): value is HistoryEntry {
   if (typeof value !== 'object' || value === null) {
     return false;
+  }
+
+  const entry = value as Record<string, unknown>;
+  return (
+    typeof entry.description === 'string' &&
+    Array.isArray(entry.primitives) &&
+    entry.primitives.every(isPrimitive)
+  );
+}
+
+function normalizeHistory(value: unknown): ProjectState['history'] | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+
+  const history = value as Record<string, unknown>;
+  if (!Array.isArray(history.past)) {
+    return null;
+  }
+
+  if (history.past.every(isHistoryEntry)) {
+    const future =
+      Array.isArray(history.future) && history.future.every(isHistoryEntry) ? history.future : [];
+    return {
+      past: history.past,
+      future
+    };
+  }
+
+  const isLegacyPast = history.past.every(
+    (entry) => Array.isArray(entry) && entry.every(isPrimitive)
+  );
+  if (!isLegacyPast) {
+    return null;
+  }
+
+  return {
+    past: history.past.map((entry) => ({
+      primitives: entry,
+      description: 'Imported history step'
+    })),
+    future: []
+  };
+}
+
+function normalizeProjectState(value: unknown): ProjectState | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
   }
 
   const state = value as Record<string, unknown>;
 
   if (typeof state.tile !== 'object' || state.tile === null) {
-    return false;
+    return null;
   }
   const tile = state.tile as Record<string, unknown>;
 
   if (!isTileShape(tile.shape) || typeof tile.size !== 'number') {
-    return false;
+    return null;
   }
 
   if (!Array.isArray(state.primitives) || !state.primitives.every(isPrimitive)) {
-    return false;
+    return null;
   }
 
   if (!isTool(state.activeTool) || typeof state.activeColor !== 'string') {
-    return false;
+    return null;
   }
 
-  if (typeof state.history !== 'object' || state.history === null) {
-    return false;
+  const history = normalizeHistory(state.history);
+  if (!history) {
+    return null;
   }
 
-  const history = state.history as Record<string, unknown>;
-  if (!Array.isArray(history.past)) {
-    return false;
-  }
-
-  return history.past.every(
-    (entry) => Array.isArray(entry) && entry.every(isPrimitive)
-  );
+  return {
+    tile: {
+      shape: tile.shape,
+      size: tile.size
+    },
+    primitives: state.primitives,
+    activeTool: state.activeTool,
+    activeColor: state.activeColor,
+    history
+  };
 }
 
 function parsePersisted(payload: string): LoadResult {
@@ -135,7 +187,8 @@ function parsePersisted(payload: string): LoadResult {
     throw new Error('Unsupported project version.');
   }
 
-  if (!isProjectState(persisted.project)) {
+  const normalizedProject = normalizeProjectState(persisted.project);
+  if (!normalizedProject) {
     throw new Error('Project state is invalid.');
   }
 
@@ -144,7 +197,7 @@ function parsePersisted(payload: string): LoadResult {
   }
 
   return {
-    project: persisted.project,
+    project: normalizedProject,
     pattern: persisted.pattern
   };
 }

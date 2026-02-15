@@ -6,6 +6,7 @@ interface ToolbarProps {
   activeColor: string;
   colors: string[];
   canUndo: boolean;
+  canRedo: boolean;
   selectedCount: number;
   onShapeChange: (shape: TileShape) => void;
   onToolChange: (tool: Tool) => void;
@@ -14,6 +15,7 @@ interface ToolbarProps {
   onRotateSelectionCcw: () => void;
   onRotateSelectionCw: () => void;
   onUndo: () => void;
+  onRedo: () => void;
 }
 
 const tools: Array<{ id: Tool; label: string }> = [
@@ -95,9 +97,14 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
 
       <section>
         <h2>History</h2>
-        <button type="button" onClick={props.onUndo} disabled={!props.canUndo}>
-          Undo
-        </button>
+        <div className="history-controls">
+          <button type="button" onClick={props.onUndo} disabled={!props.canUndo}>
+            Undo
+          </button>
+          <button type="button" onClick={props.onRedo} disabled={!props.canRedo}>
+            Redo
+          </button>
+        </div>
       </section>
     </aside>
   );

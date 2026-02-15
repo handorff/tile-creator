@@ -105,7 +105,17 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      const undoCombo = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z';
+      const key = event.key.toLowerCase();
+      const hasPrimaryModifier = event.metaKey || event.ctrlKey;
+      const undoCombo = hasPrimaryModifier && !event.shiftKey && key === 'z';
+      const redoCombo = (hasPrimaryModifier && event.shiftKey && key === 'z') || event.ctrlKey && key === 'y';
+
+      if (redoCombo) {
+        event.preventDefault();
+        dispatch({ type: 'redo' });
+        return;
+      }
+
       if (undoCombo) {
         event.preventDefault();
         dispatch({ type: 'undo' });
@@ -313,6 +323,7 @@ export function App(): JSX.Element {
           activeColor={project.activeColor}
           colors={DEFAULT_COLORS}
           canUndo={project.history.past.length > 0}
+          canRedo={project.history.future.length > 0}
           selectedCount={selectedPrimitiveIds.length}
           onShapeChange={setShape}
           onToolChange={setTool}
@@ -321,6 +332,7 @@ export function App(): JSX.Element {
           onRotateSelectionCcw={() => rotateSelected(false)}
           onRotateSelectionCw={() => rotateSelected(true)}
           onUndo={() => dispatch({ type: 'undo' })}
+          onRedo={() => dispatch({ type: 'redo' })}
         />
 
         <section className="center-panel">

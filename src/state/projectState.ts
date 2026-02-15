@@ -35,7 +35,8 @@ export const initialProjectState: ProjectState = {
   activeTool: 'line',
   activeColor: DEFAULT_COLORS[0],
   history: {
-    past: []
+    past: [],
+    future: []
   }
 };
 
@@ -52,16 +53,23 @@ export type ProjectAction =
   | { type: 'erase-primitive'; id: string }
   | { type: 'erase-primitives'; ids: string[] }
   | { type: 'undo' }
+  | { type: 'redo' }
   | { type: 'hydrate'; state: ProjectState }
   | { type: 'clear' };
 
-function withHistory(state: ProjectState): ProjectState {
+function withHistory(state: ProjectState, description: string): ProjectState {
   return {
     ...state,
     history: {
-      past: [...state.history.past, state.primitives]
+      past: [...state.history.past, { primitives: state.primitives, description }],
+      future: []
     }
   };
+}
+
+function describeShapeCount(action: string, count: number): string {
+  const shapeLabel = count === 1 ? 'shape' : 'shapes';
+  return `${action} ${count} ${shapeLabel}`;
 }
 
 function setTileShape(state: ProjectState, shape: TileShape): ProjectState {
@@ -69,7 +77,7 @@ function setTileShape(state: ProjectState, shape: TileShape): ProjectState {
     return state;
   }
 
-  const next = withHistory(state);
+  const next = withHistory(state, 'Change tile shape');
   const tile: TileConfig = {
     ...next.tile,
     shape
@@ -83,7 +91,11 @@ function setTileShape(state: ProjectState, shape: TileShape): ProjectState {
 }
 
 function addPrimitive(state: ProjectState, primitive: Primitive): ProjectState {
-  return addPrimitives(state, [primitive]);
+  const next = withHistory(state, primitive.kind === 'line' ? 'Add line' : 'Add circle');
+  return {
+    ...next,
+    primitives: [...state.primitives, primitive]
+  };
 }
 
 function addPrimitives(state: ProjectState, primitives: Primitive[]): ProjectState {
@@ -91,7 +103,7 @@ function addPrimitives(state: ProjectState, primitives: Primitive[]): ProjectSta
     return state;
   }
 
-  const next = withHistory(state);
+  const next = withHistory(state, describeShapeCount('Add', primitives.length));
   return {
     ...next,
     primitives: [...state.primitives, ...primitives]
@@ -108,12 +120,15 @@ function erasePrimitives(state: ProjectState, ids: string[]): ProjectState {
   }
 
   const selected = new Set(ids);
-  const hasMatch = state.primitives.some((primitive) => selected.has(primitive.id));
-  if (!hasMatch) {
+  const removedCount = state.primitives.reduce(
+    (count, primitive) => (selected.has(primitive.id) ? count + 1 : count),
+    0
+  );
+  if (removedCount === 0) {
     return state;
   }
 
-  const next = withHistory(state);
+  const next = withHistory(state, describeShapeCount('Erase', removedCount));
   return {
     ...next,
     primitives: state.primitives.filter((primitive) => !selected.has(primitive.id))
@@ -150,22 +165,22 @@ function updatePrimitives(state: ProjectState, primitives: Primitive[]): Project
   }
 
   const updates = new Map(primitives.map((primitive) => [primitive.id, primitive]));
-  let changed = false;
+  let changedCount = 0;
   const updatedPrimitives = state.primitives.map((primitive) => {
     const next = updates.get(primitive.id);
     if (!next || samePrimitive(primitive, next)) {
       return primitive;
     }
 
-    changed = true;
+    changedCount += 1;
     return next;
   });
 
-  if (!changed) {
+  if (changedCount === 0) {
     return state;
   }
 
-  const next = withHistory(state);
+  const next = withHistory(state, describeShapeCount('Edit', changedCount));
   return {
     ...next,
     primitives: updatedPrimitives
@@ -178,24 +193,24 @@ function recolorPrimitives(state: ProjectState, ids: string[], color: string): P
   }
 
   const selected = new Set(ids);
-  let changed = false;
+  let changedCount = 0;
   const updatedPrimitives = state.primitives.map((primitive) => {
     if (!selected.has(primitive.id) || primitive.color === color) {
       return primitive;
     }
 
-    changed = true;
+    changedCount += 1;
     return {
       ...primitive,
       color
     };
   });
 
-  if (!changed) {
+  if (changedCount === 0) {
     return state;
   }
 
-  const next = withHistory(state);
+  const next = withHistory(state, describeShapeCount('Recolor', changedCount));
   return {
     ...next,
     primitives: updatedPrimitives
@@ -240,7 +255,7 @@ function splitLine(
     return state;
   }
 
-  const next = withHistory(state);
+  const next = withHistory(state, 'Split line');
   const first: Primitive = {
     id: firstId,
     kind: 'line',
@@ -272,12 +287,33 @@ function undo(state: ProjectState): ProjectState {
 
   const past = [...state.history.past];
   const previous = past.pop()!;
+  const future = [...state.history.future, { primitives: state.primitives, description: previous.description }];
 
   return {
     ...state,
-    primitives: previous,
+    primitives: previous.primitives,
     history: {
-      past
+      past,
+      future
+    }
+  };
+}
+
+function redo(state: ProjectState): ProjectState {
+  if (state.history.future.length === 0) {
+    return state;
+  }
+
+  const future = [...state.history.future];
+  const next = future.pop()!;
+  const past = [...state.history.past, { primitives: state.primitives, description: next.description }];
+
+  return {
+    ...state,
+    primitives: next.primitives,
+    history: {
+      past,
+      future
     }
   };
 }
@@ -314,16 +350,17 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return erasePrimitives(state, action.ids);
     case 'undo':
       return undo(state);
+    case 'redo':
+      return redo(state);
     case 'hydrate':
       return action.state;
-    case 'clear':
+    case 'clear': {
+      const next = withHistory(state, 'Clear tile');
       return {
-        ...state,
-        primitives: [],
-        history: {
-          past: [...state.history.past, state.primitives]
-        }
+        ...next,
+        primitives: []
       };
+    }
     default:
       return state;
   }

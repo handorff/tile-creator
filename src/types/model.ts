@@ -35,8 +35,14 @@ export interface PatternSize {
   rows: number;
 }
 
+export interface HistoryEntry {
+  primitives: Primitive[];
+  description: string;
+}
+
 export interface HistoryState {
-  past: Primitive[][];
+  past: HistoryEntry[];
+  future: HistoryEntry[];
 }
 
 export interface ProjectState {
