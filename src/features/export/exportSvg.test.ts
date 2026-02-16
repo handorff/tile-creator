@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildTiledSvg } from './exportSvg';
+import { buildSingleTileSvg, buildTiledSvg } from './exportSvg';
 import { initialProjectState } from '../../state/projectState';
 
 describe('buildTiledSvg', () => {
@@ -23,5 +23,28 @@ describe('buildTiledSvg', () => {
     expect(svg).toContain('<svg');
     expect(svg).toContain('<clipPath');
     expect(svg).toContain('<line');
+  });
+
+  it('creates a single-tile svg document with clipping', () => {
+    const project = {
+      ...initialProjectState,
+      primitives: [
+        {
+          id: 'circle-1',
+          kind: 'circle' as const,
+          center: { x: 0, y: 0 },
+          radius: 8,
+          color: '#111'
+        }
+      ]
+    };
+
+    const svg = buildSingleTileSvg(project, { background: '#ffffff' });
+
+    expect(svg.startsWith('<?xml')).toBe(true);
+    expect(svg).toContain('<svg');
+    expect(svg).toContain('<clipPath');
+    expect(svg).toContain('<circle');
+    expect(svg).toContain('fill="#ffffff"');
   });
 });

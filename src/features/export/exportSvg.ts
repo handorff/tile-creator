@@ -29,6 +29,30 @@ function getCellOffset(tile: TileConfig, col: number, row: number): { x: number;
   };
 }
 
+function boundsForPoints(
+  points: { x: number; y: number }[],
+  margin: number
+): { minX: number; minY: number; width: number; height: number } {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  for (const point of points) {
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  }
+
+  return {
+    minX: minX - margin,
+    minY: minY - margin,
+    width: maxX - minX + margin * 2,
+    height: maxY - minY + margin * 2
+  };
+}
+
 function boundsForPattern(
   tile: TileConfig,
   options: ExportOptions
@@ -54,12 +78,48 @@ function boundsForPattern(
   }
 
   const margin = tile.size * 0.2;
+  return boundsForPoints(
+    [
+      { x: minX, y: minY },
+      { x: maxX, y: maxY }
+    ],
+    margin
+  );
+}
+
+function boundsForSingleTile(tile: TileConfig): { minX: number; minY: number; width: number; height: number } {
+  const margin = tile.size * 0.2;
+  return boundsForPoints(getTilePolygon(tile), margin);
+}
+
+function renderClippedTile(
+  tilePolygon: { x: number; y: number }[],
+  primitives: Primitive[],
+  neighborOffsets: { x: number; y: number }[],
+  offset: { x: number; y: number },
+  clipId: string
+): { def: string; group: string } {
+  const movedPolygon = translatePoints(tilePolygon, offset);
+  const def = `<clipPath id="${clipId}"><polygon points="${polygonPoints(movedPolygon)}" /></clipPath>`;
+  const renderedPrimitives = primitives.flatMap((primitive) =>
+    neighborOffsets.map((neighbor) =>
+      primitiveSvg(
+        translatePrimitive(primitive, {
+          x: offset.x + neighbor.x,
+          y: offset.y + neighbor.y
+        })
+      )
+    )
+  );
+
   return {
-    minX: minX - margin,
-    minY: minY - margin,
-    width: maxX - minX + margin * 2,
-    height: maxY - minY + margin * 2
+    def,
+    group: `<g clip-path="url(#${clipId})">${renderedPrimitives.join('')}</g>`
   };
+}
+
+interface SingleTileExportOptions {
+  background?: string;
 }
 
 export function buildTiledSvg(projectState: ProjectState, options: ExportOptions): string {
@@ -74,24 +134,16 @@ export function buildTiledSvg(projectState: ProjectState, options: ExportOptions
     for (let col = 0; col < options.pattern.columns; col += 1) {
       const offset = getCellOffset(projectState.tile, col, row);
       const clipId = `clip-${col}-${row}`;
-      const movedPolygon = translatePoints(tilePolygon, offset);
-
-      defs.push(
-        `<clipPath id="${clipId}"><polygon points="${polygonPoints(movedPolygon)}" /></clipPath>`
+      const rendered = renderClippedTile(
+        tilePolygon,
+        projectState.primitives,
+        neighborOffsets,
+        offset,
+        clipId
       );
 
-      const primitives = projectState.primitives.flatMap((primitive) =>
-        neighborOffsets.map((neighbor) =>
-          primitiveSvg(
-            translatePrimitive(primitive, {
-              x: offset.x + neighbor.x,
-              y: offset.y + neighbor.y
-            })
-          )
-        )
-      );
-
-      groups.push(`<g clip-path="url(#${clipId})">${primitives.join('')}</g>`);
+      defs.push(rendered.def);
+      groups.push(rendered.group);
     }
   }
 
@@ -104,5 +156,32 @@ export function buildTiledSvg(projectState: ProjectState, options: ExportOptions
 <defs>${defs.join('')}</defs>
 ${background}
 ${groups.join('')}
+</svg>`;
+}
+
+export function buildSingleTileSvg(
+  projectState: ProjectState,
+  options: SingleTileExportOptions = {}
+): string {
+  const tilePolygon = getTilePolygon(projectState.tile);
+  const neighborOffsets = periodicNeighborOffsets(projectState.tile);
+  const bounds = boundsForSingleTile(projectState.tile);
+  const rendered = renderClippedTile(
+    tilePolygon,
+    projectState.primitives,
+    neighborOffsets,
+    { x: 0, y: 0 },
+    'clip-tile'
+  );
+
+  const background = options.background
+    ? `<rect x="${bounds.minX}" y="${bounds.minY}" width="${bounds.width}" height="${bounds.height}" fill="${options.background}" />`
+    : '';
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="${bounds.minX} ${bounds.minY} ${bounds.width} ${bounds.height}">
+<defs>${rendered.def}</defs>
+${background}
+${rendered.group}
 </svg>`;
 }

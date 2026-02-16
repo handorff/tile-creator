@@ -10,6 +10,7 @@ Tile Creator is an SVG-first editor for building a single canonical tile (square
 - Object erase and multi-step undo
 - Repeat pattern by tile counts (`columns x rows`)
 - Export final pattern as SVG
+- Export tile edit replay as animated GIF
 - Export/import editable project JSON
 - Autosave/restore with localStorage
 

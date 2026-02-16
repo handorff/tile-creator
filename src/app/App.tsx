@@ -3,6 +3,7 @@ import type { ChangeEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { EditorCanvas } from '../features/editor/EditorCanvas';
 import { SELECTION_SHORTCUTS, TOOL_SHORTCUT_BY_KEY } from '../features/editor/shortcuts';
 import { Toolbar } from '../features/editor/Toolbar';
+import { buildAnimatedGif } from '../features/export/exportGif';
 import { buildTiledSvg } from '../features/export/exportSvg';
 import {
   deserializeProject,
@@ -19,7 +20,7 @@ import {
   projectReducer
 } from '../state/projectState';
 import type { PatternSize, Point, Primitive, ProjectState, TileShape, Tool } from '../types/model';
-import { downloadText } from '../utils/download';
+import { downloadBlob, downloadText } from '../utils/download';
 import { createId } from '../utils/ids';
 
 interface InitialState {
@@ -110,6 +111,7 @@ export function App(): JSX.Element {
   const [selectedPrimitiveIds, setSelectedPrimitiveIds] = useState<string[]>([]);
   const [splitSelectionLineId, setSplitSelectionLineId] = useState<string | null>(null);
   const [message, setMessage] = useState<string>('');
+  const [isExportingGif, setIsExportingGif] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const centerSplitRef = useRef<HTMLDivElement | null>(null);
   const [editorPane, setEditorPane] = useState<number>(0.55);
@@ -455,6 +457,25 @@ export function App(): JSX.Element {
     setMessage('Exported project JSON.');
   };
 
+  const exportAnimatedGif = async (): Promise<void> => {
+    if (isExportingGif) {
+      return;
+    }
+
+    setIsExportingGif(true);
+    setMessage('Exporting animated GIF...');
+
+    try {
+      const gif = await buildAnimatedGif(project);
+      downloadBlob('tile-history.gif', gif);
+      setMessage('Exported animated GIF.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not export animated GIF.');
+    } finally {
+      setIsExportingGif(false);
+    }
+  };
+
   const importProjectJson = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const [file] = Array.from(event.target.files ?? []);
     if (!file) {
@@ -664,6 +685,9 @@ export function App(): JSX.Element {
               </button>
               <button type="button" onClick={exportProjectJson}>
                 Export Project
+              </button>
+              <button type="button" onClick={() => void exportAnimatedGif()} disabled={isExportingGif}>
+                Export Animated GIF
               </button>
               <button type="button" onClick={() => fileInputRef.current?.click()}>
                 Import Project
