@@ -48,6 +48,32 @@ describe('project reducer', () => {
     expect(undone.primitives).toHaveLength(0);
   });
 
+  it('uses custom history description for add-primitives when provided', () => {
+    const state = projectReducer(initialProjectState, {
+      type: 'add-primitives',
+      primitives: [
+        {
+          id: 'line-1',
+          kind: 'line',
+          a: { x: 0, y: 0 },
+          b: { x: 10, y: 10 },
+          color: '#111'
+        },
+        {
+          id: 'line-2',
+          kind: 'line',
+          a: { x: 0, y: 10 },
+          b: { x: 10, y: 0 },
+          color: '#222'
+        }
+      ],
+      historyDescription: 'Duplicate 2 shapes'
+    });
+
+    expect(state.history.past).toHaveLength(1);
+    expect(state.history.past[0].description).toBe('Duplicate 2 shapes');
+  });
+
   it('erases primitive', () => {
     const withPrimitive = projectReducer(initialProjectState, {
       type: 'add-primitive',
@@ -226,6 +252,55 @@ describe('project reducer', () => {
     const undone = projectReducer(updated, { type: 'undo' });
     expect(undone.primitives[0]).toMatchObject({ a: { x: 0, y: 0 }, b: { x: 10, y: 0 } });
     expect(undone.primitives[1]).toMatchObject({ a: { x: 0, y: 10 }, b: { x: 10, y: 10 } });
+  });
+
+  it('uses custom history description for update-primitives when provided', () => {
+    const withFirst = projectReducer(initialProjectState, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-1',
+        kind: 'line',
+        a: { x: 0, y: 0 },
+        b: { x: 10, y: 0 },
+        color: '#111'
+      }
+    });
+    const withSecond = projectReducer(withFirst, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-2',
+        kind: 'line',
+        a: { x: 0, y: 10 },
+        b: { x: 10, y: 10 },
+        color: '#222'
+      }
+    });
+
+    const updated = projectReducer(withSecond, {
+      type: 'update-primitives',
+      primitives: [
+        {
+          id: 'line-1',
+          kind: 'line',
+          a: { x: 1, y: 1 },
+          b: { x: 11, y: 1 },
+          color: '#111'
+        },
+        {
+          id: 'line-2',
+          kind: 'line',
+          a: { x: 1, y: 11 },
+          b: { x: 11, y: 11 },
+          color: '#222'
+        }
+      ],
+      historyDescription: 'Rotate 2 shapes clockwise'
+    });
+
+    expect(updated.history.past).toHaveLength(withSecond.history.past.length + 1);
+    expect(updated.history.past[updated.history.past.length - 1].description).toBe(
+      'Rotate 2 shapes clockwise'
+    );
   });
 
   it('changing tile shape clears primitives safely', () => {
@@ -481,6 +556,144 @@ describe('project reducer', () => {
     ]);
   });
 
+  it('jump-history moves backward to the requested state', () => {
+    const one = projectReducer(initialProjectState, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-1',
+        kind: 'line',
+        a: { x: 0, y: 0 },
+        b: { x: 10, y: 0 },
+        color: '#111'
+      }
+    });
+    const two = projectReducer(one, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-2',
+        kind: 'line',
+        a: { x: 0, y: 10 },
+        b: { x: 10, y: 10 },
+        color: '#222'
+      }
+    });
+    const three = projectReducer(two, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-3',
+        kind: 'line',
+        a: { x: 5, y: 0 },
+        b: { x: 5, y: 10 },
+        color: '#333'
+      }
+    });
+
+    const jumped = projectReducer(three, { type: 'jump-history', pastLength: 1 });
+
+    expect(jumped.primitives.map((primitive) => primitive.id)).toEqual(['line-1']);
+    expect(jumped.history.past).toHaveLength(1);
+    expect(jumped.history.future).toHaveLength(2);
+  });
+
+  it('jump-history moves forward to a future state', () => {
+    const one = projectReducer(initialProjectState, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-1',
+        kind: 'line',
+        a: { x: 0, y: 0 },
+        b: { x: 10, y: 0 },
+        color: '#111'
+      }
+    });
+    const two = projectReducer(one, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-2',
+        kind: 'line',
+        a: { x: 0, y: 10 },
+        b: { x: 10, y: 10 },
+        color: '#222'
+      }
+    });
+    const three = projectReducer(two, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-3',
+        kind: 'line',
+        a: { x: 5, y: 0 },
+        b: { x: 5, y: 10 },
+        color: '#333'
+      }
+    });
+    const undoneTwice = projectReducer(projectReducer(three, { type: 'undo' }), { type: 'undo' });
+
+    const jumped = projectReducer(undoneTwice, { type: 'jump-history', pastLength: 3 });
+
+    expect(jumped.primitives.map((primitive) => primitive.id)).toEqual(['line-1', 'line-2', 'line-3']);
+    expect(jumped.history.past).toHaveLength(3);
+    expect(jumped.history.future).toHaveLength(0);
+  });
+
+  it('jump-history can jump to start state', () => {
+    const one = projectReducer(initialProjectState, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-1',
+        kind: 'line',
+        a: { x: 0, y: 0 },
+        b: { x: 10, y: 0 },
+        color: '#111'
+      }
+    });
+    const two = projectReducer(one, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-2',
+        kind: 'line',
+        a: { x: 0, y: 10 },
+        b: { x: 10, y: 10 },
+        color: '#222'
+      }
+    });
+
+    const jumped = projectReducer(two, { type: 'jump-history', pastLength: 0 });
+
+    expect(jumped.primitives).toEqual([]);
+    expect(jumped.history.past).toHaveLength(0);
+    expect(jumped.history.future).toHaveLength(2);
+  });
+
+  it('jump-history clamps out-of-range past lengths', () => {
+    const one = projectReducer(initialProjectState, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-1',
+        kind: 'line',
+        a: { x: 0, y: 0 },
+        b: { x: 10, y: 0 },
+        color: '#111'
+      }
+    });
+    const two = projectReducer(one, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-2',
+        kind: 'line',
+        a: { x: 0, y: 10 },
+        b: { x: 10, y: 10 },
+        color: '#222'
+      }
+    });
+
+    const clampedHigh = projectReducer(two, { type: 'jump-history', pastLength: 999 });
+    expect(clampedHigh).toBe(two);
+
+    const clampedLow = projectReducer(two, { type: 'jump-history', pastLength: -5 });
+    expect(clampedLow.primitives).toEqual([]);
+    expect(clampedLow.history.past).toHaveLength(0);
+  });
+
   it('new action after undo clears redo stack', () => {
     const one = projectReducer(initialProjectState, {
       type: 'add-primitive',
@@ -506,6 +719,45 @@ describe('project reducer', () => {
     expect(undone.history.future).toHaveLength(1);
 
     const afterNewAction = projectReducer(undone, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-3',
+        kind: 'line',
+        a: { x: 3, y: 3 },
+        b: { x: 8, y: 8 },
+        color: '#333'
+      }
+    });
+
+    expect(afterNewAction.primitives.map((primitive) => primitive.id)).toEqual(['line-1', 'line-3']);
+    expect(afterNewAction.history.future).toHaveLength(0);
+  });
+
+  it('new action after jump-history clears future stack', () => {
+    const one = projectReducer(initialProjectState, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-1',
+        kind: 'line',
+        a: { x: 0, y: 0 },
+        b: { x: 10, y: 10 },
+        color: '#111'
+      }
+    });
+    const two = projectReducer(one, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-2',
+        kind: 'line',
+        a: { x: 10, y: 0 },
+        b: { x: 0, y: 10 },
+        color: '#222'
+      }
+    });
+    const jumped = projectReducer(two, { type: 'jump-history', pastLength: 1 });
+    expect(jumped.history.future).toHaveLength(1);
+
+    const afterNewAction = projectReducer(jumped, {
       type: 'add-primitive',
       primitive: {
         id: 'line-3',

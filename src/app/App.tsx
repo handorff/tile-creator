@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { EditorCanvas } from '../features/editor/EditorCanvas';
+import { buildHistoryTimeline } from '../features/editor/historyTimeline';
 import { SELECTION_SHORTCUTS, TOOL_SHORTCUT_BY_KEY } from '../features/editor/shortcuts';
 import { Toolbar } from '../features/editor/Toolbar';
 import { buildAnimatedGif } from '../features/export/exportGif';
@@ -276,6 +277,7 @@ export function App(): JSX.Element {
     () => project.primitives.filter((primitive) => !hiddenColorSet.has(primitive.color)),
     [hiddenColorSet, project.primitives]
   );
+  const historyTimeline = useMemo(() => buildHistoryTimeline(project.history), [project.history]);
 
   useEffect(() => {
     setSplitSelectionLineId((current) => {
@@ -414,7 +416,12 @@ export function App(): JSX.Element {
       return;
     }
 
-    dispatch({ type: 'add-primitives', primitives: duplicates });
+    const shapeLabel = duplicates.length === 1 ? 'shape' : 'shapes';
+    dispatch({
+      type: 'add-primitives',
+      primitives: duplicates,
+      historyDescription: `Duplicate ${duplicates.length} ${shapeLabel}`
+    });
     setSelectedPrimitiveIds(duplicates.map((primitive) => primitive.id));
   }, [project.primitives, selectedPrimitiveIds]);
 
@@ -435,7 +442,13 @@ export function App(): JSX.Element {
         return;
       }
 
-      dispatch({ type: 'update-primitives', primitives: rotated });
+      const directionLabel = clockwise ? 'clockwise' : 'counterclockwise';
+      const shapeLabel = rotated.length === 1 ? 'shape' : 'shapes';
+      dispatch({
+        type: 'update-primitives',
+        primitives: rotated,
+        historyDescription: `Rotate ${rotated.length} ${shapeLabel} ${directionLabel}`
+      });
     },
     [project.primitives, project.tile.shape, selectedPrimitiveIds]
   );
@@ -654,6 +667,7 @@ export function App(): JSX.Element {
           colors={availableColors}
           canUndo={project.history.past.length > 0}
           canRedo={project.history.future.length > 0}
+          historyTimeline={historyTimeline}
           selectedCount={selectedPrimitiveIds.length}
           canSplitSelection={canSplitSelection}
           splitSelectionArmed={splitSelectionArmed}
@@ -670,6 +684,7 @@ export function App(): JSX.Element {
           onRotateSelectionCw={() => rotateSelected(true)}
           onUndo={() => dispatch({ type: 'undo' })}
           onRedo={() => dispatch({ type: 'redo' })}
+          onHistoryJump={(pastLength) => dispatch({ type: 'jump-history', pastLength })}
         />
 
         <section className="center-panel">

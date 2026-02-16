@@ -10,6 +10,7 @@ import {
   Slash,
   type LucideIcon
 } from 'lucide-react';
+import type { HistoryTimelineItem } from './historyTimeline';
 import type { TileShape, Tool } from '../../types/model';
 import { SELECTION_SHORTCUTS, TOOL_SHORTCUTS, formatShortcutKey } from './shortcuts';
 
@@ -22,6 +23,7 @@ interface ToolbarProps {
   colors: string[];
   canUndo: boolean;
   canRedo: boolean;
+  historyTimeline: HistoryTimelineItem[];
   selectedCount: number;
   canSplitSelection: boolean;
   splitSelectionArmed: boolean;
@@ -38,6 +40,7 @@ interface ToolbarProps {
   onRotateSelectionCw: () => void;
   onUndo: () => void;
   onRedo: () => void;
+  onHistoryJump: (pastLength: number) => void;
 }
 
 const toolIcons: Record<Tool, LucideIcon> = {
@@ -244,14 +247,30 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
       </section>
 
       <section>
-        <h2>History</h2>
-        <div className="history-controls">
-          <button type="button" onClick={props.onUndo} disabled={!props.canUndo}>
-            Undo
-          </button>
-          <button type="button" onClick={props.onRedo} disabled={!props.canRedo}>
-            Redo
-          </button>
+        <div className="history-header">
+          <h2>History</h2>
+          <div className="history-controls">
+            <button type="button" onClick={props.onUndo} disabled={!props.canUndo}>
+              Undo
+            </button>
+            <button type="button" onClick={props.onRedo} disabled={!props.canRedo}>
+              Redo
+            </button>
+          </div>
+        </div>
+        <div className="history-timeline" role="list" aria-label="History timeline">
+          {props.historyTimeline.map((item) => (
+            <button
+              key={item.pastLength}
+              type="button"
+              data-testid={`history-step-${item.pastLength}`}
+              className={`history-timeline-item${item.isCurrent ? ' current' : ''}${item.isFuture ? ' future' : ''}`}
+              aria-current={item.isCurrent ? 'step' : undefined}
+              onClick={() => props.onHistoryJump(item.pastLength)}
+            >
+              {item.label}
+            </button>
+          ))}
         </div>
       </section>
     </aside>

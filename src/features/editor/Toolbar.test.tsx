@@ -12,6 +12,9 @@ function buildToolbarProps() {
     colors: ['#111', '#222'],
     canUndo: false,
     canRedo: false,
+    historyTimeline: [
+      { pastLength: 0, label: 'Start', isCurrent: true, isFuture: false }
+    ],
     selectedCount: 1,
     canSplitSelection: true,
     splitSelectionArmed: false,
@@ -27,7 +30,8 @@ function buildToolbarProps() {
     onRotateSelectionCcw: vi.fn(),
     onRotateSelectionCw: vi.fn(),
     onUndo: vi.fn(),
-    onRedo: vi.fn()
+    onRedo: vi.fn(),
+    onHistoryJump: vi.fn()
   };
 }
 
@@ -165,6 +169,46 @@ describe('Toolbar', () => {
 
     fireEvent.click(within(view.container).getByRole('button', { name: 'Redo' }));
     expect(props.onRedo).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders history timeline including start and current row', () => {
+    const props = buildToolbarProps();
+    const view = render(
+      <Toolbar
+        {...props}
+        historyTimeline={[
+          { pastLength: 0, label: 'Start', isCurrent: false, isFuture: false },
+          { pastLength: 1, label: 'Add line', isCurrent: true, isFuture: false }
+        ]}
+      />
+    );
+
+    expect(within(view.container).getByRole('button', { name: 'Start' })).toBeInTheDocument();
+    expect(within(view.container).getByRole('button', { name: 'Add line' })).toHaveClass('current');
+    expect(within(view.container).getByRole('button', { name: 'Add line' })).toHaveAttribute(
+      'aria-current',
+      'step'
+    );
+  });
+
+  it('shows future timeline rows and allows jumping to them', () => {
+    const props = buildToolbarProps();
+    const view = render(
+      <Toolbar
+        {...props}
+        historyTimeline={[
+          { pastLength: 0, label: 'Start', isCurrent: false, isFuture: false },
+          { pastLength: 1, label: 'Add line', isCurrent: true, isFuture: false },
+          { pastLength: 2, label: 'Add circle', isCurrent: false, isFuture: true }
+        ]}
+      />
+    );
+
+    const futureStep = within(view.container).getByTestId('history-step-2');
+    expect(futureStep).toHaveClass('future');
+
+    fireEvent.click(futureStep);
+    expect(props.onHistoryJump).toHaveBeenCalledWith(2);
   });
 
   it('shows shortcut titles for tool and selection buttons', () => {

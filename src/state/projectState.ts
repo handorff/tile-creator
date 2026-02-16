@@ -72,14 +72,15 @@ export type ProjectAction =
   | { type: 'restroke-primitives'; ids: string[]; strokeWidth: number }
   | { type: 'set-tile-shape'; shape: TileShape }
   | { type: 'add-primitive'; primitive: Primitive }
-  | { type: 'add-primitives'; primitives: Primitive[] }
+  | { type: 'add-primitives'; primitives: Primitive[]; historyDescription?: string }
   | { type: 'update-primitive'; primitive: Primitive }
-  | { type: 'update-primitives'; primitives: Primitive[] }
+  | { type: 'update-primitives'; primitives: Primitive[]; historyDescription?: string }
   | { type: 'split-line'; id: string; point: Point; firstId: string; secondId: string }
   | { type: 'erase-primitive'; id: string }
   | { type: 'erase-primitives'; ids: string[] }
   | { type: 'undo' }
   | { type: 'redo' }
+  | { type: 'jump-history'; pastLength: number }
   | { type: 'hydrate'; state: ProjectState }
   | { type: 'clear' };
 
@@ -125,13 +126,17 @@ function addPrimitive(state: ProjectState, primitive: Primitive): ProjectState {
   };
 }
 
-function addPrimitives(state: ProjectState, primitives: Primitive[]): ProjectState {
+function addPrimitives(
+  state: ProjectState,
+  primitives: Primitive[],
+  historyDescription?: string
+): ProjectState {
   if (primitives.length === 0) {
     return state;
   }
 
   const normalizedPrimitives = primitives.map(withNormalizedStrokeWidth);
-  const next = withHistory(state, describeShapeCount('Add', primitives.length));
+  const next = withHistory(state, historyDescription ?? describeShapeCount('Add', primitives.length));
   return {
     ...next,
     primitives: [...state.primitives, ...normalizedPrimitives]
@@ -192,7 +197,11 @@ function updatePrimitive(state: ProjectState, primitive: Primitive): ProjectStat
   return updatePrimitives(state, [primitive]);
 }
 
-function updatePrimitives(state: ProjectState, primitives: Primitive[]): ProjectState {
+function updatePrimitives(
+  state: ProjectState,
+  primitives: Primitive[],
+  historyDescription?: string
+): ProjectState {
   if (primitives.length === 0) {
     return state;
   }
@@ -215,7 +224,7 @@ function updatePrimitives(state: ProjectState, primitives: Primitive[]): Project
     return state;
   }
 
-  const next = withHistory(state, describeShapeCount('Edit', changedCount));
+  const next = withHistory(state, historyDescription ?? describeShapeCount('Edit', changedCount));
   return {
     ...next,
     primitives: updatedPrimitives
@@ -386,6 +395,25 @@ function redo(state: ProjectState): ProjectState {
   };
 }
 
+function jumpHistory(state: ProjectState, pastLength: number): ProjectState {
+  const totalHistoryLength = state.history.past.length + state.history.future.length;
+  const normalizedPastLength = Number.isFinite(pastLength) ? Math.trunc(pastLength) : state.history.past.length;
+  const targetPastLength = clamp(normalizedPastLength, 0, totalHistoryLength);
+  if (targetPastLength === state.history.past.length) {
+    return state;
+  }
+
+  let next = state;
+  while (next.history.past.length > targetPastLength) {
+    next = undo(next);
+  }
+  while (next.history.past.length < targetPastLength) {
+    next = redo(next);
+  }
+
+  return next;
+}
+
 export function projectReducer(state: ProjectState, action: ProjectAction): ProjectState {
   switch (action.type) {
     case 'set-tool':
@@ -412,11 +440,11 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     case 'add-primitive':
       return addPrimitive(state, action.primitive);
     case 'add-primitives':
-      return addPrimitives(state, action.primitives);
+      return addPrimitives(state, action.primitives, action.historyDescription);
     case 'update-primitive':
       return updatePrimitive(state, action.primitive);
     case 'update-primitives':
-      return updatePrimitives(state, action.primitives);
+      return updatePrimitives(state, action.primitives, action.historyDescription);
     case 'split-line':
       return splitLine(state, action.id, action.point, action.firstId, action.secondId);
     case 'erase-primitive':
@@ -427,6 +455,8 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return undo(state);
     case 'redo':
       return redo(state);
+    case 'jump-history':
+      return jumpHistory(state, action.pastLength);
     case 'hydrate':
       return action.state;
     case 'clear': {
