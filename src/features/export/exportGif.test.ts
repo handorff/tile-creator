@@ -71,6 +71,19 @@ describe('buildHistoryReplayFrames', () => {
       ['line-1']
     ]);
   });
+
+  it('returns a single empty frame when project is cleared', () => {
+    const project = makeProject({
+      primitives: [],
+      history: {
+        past: [],
+        future: []
+      }
+    });
+
+    const frames = buildHistoryReplayFrames(project);
+    expect(frames).toEqual([[]]);
+  });
 });
 
 describe('buildGifFramePlan', () => {

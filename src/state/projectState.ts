@@ -430,10 +430,13 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
     case 'hydrate':
       return action.state;
     case 'clear': {
-      const next = withHistory(state, 'Clear tile');
       return {
-        ...next,
-        primitives: []
+        ...state,
+        primitives: [],
+        history: {
+          past: [],
+          future: []
+        }
       };
     }
     default:

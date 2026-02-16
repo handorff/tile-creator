@@ -249,6 +249,39 @@ describe('project reducer', () => {
     expect(changed.primitives).toHaveLength(0);
   });
 
+  it('clear resets primitives and history stacks', () => {
+    const withFirst = projectReducer(initialProjectState, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-1',
+        kind: 'line',
+        a: { x: 0, y: 0 },
+        b: { x: 10, y: 10 },
+        color: '#111'
+      }
+    });
+    const withSecond = projectReducer(withFirst, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'line-2',
+        kind: 'line',
+        a: { x: 10, y: 0 },
+        b: { x: 0, y: 10 },
+        color: '#222'
+      }
+    });
+    const undone = projectReducer(withSecond, { type: 'undo' });
+    expect(undone.history.future).toHaveLength(1);
+
+    const cleared = projectReducer(undone, { type: 'clear' });
+    expect(cleared.primitives).toEqual([]);
+    expect(cleared.history.past).toEqual([]);
+    expect(cleared.history.future).toEqual([]);
+
+    const afterUndo = projectReducer(cleared, { type: 'undo' });
+    expect(afterUndo).toEqual(cleared);
+  });
+
   it('splits a line into two segments and supports undo', () => {
     const withLine = projectReducer(initialProjectState, {
       type: 'add-primitive',
