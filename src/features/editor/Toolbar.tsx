@@ -1,9 +1,13 @@
 import {
   Circle as CircleIcon,
+  CircleOff,
   Copy,
   Eraser,
   Hand,
+  IterationCcw,
+  IterationCw,
   MousePointer2,
+  Spline,
   RotateCcw,
   RotateCw,
   Scissors,
@@ -26,6 +30,7 @@ interface ToolbarProps {
   historyTimeline: HistoryTimelineItem[];
   selectedCount: number;
   canSplitSelection: boolean;
+  canFlipArcSelection: boolean;
   splitSelectionArmed: boolean;
   onShapeChange: (shape: TileShape) => void;
   onToolChange: (tool: Tool) => void;
@@ -36,6 +41,7 @@ interface ToolbarProps {
   onOnlyVisibleColor: (color: string) => void;
   onDuplicateSelection: () => void;
   onSplitSelection: () => void;
+  onFlipArcSelection: () => void;
   onRotateSelectionCcw: () => void;
   onRotateSelectionCw: () => void;
   onUndo: () => void;
@@ -47,6 +53,7 @@ const toolIcons: Record<Tool, LucideIcon> = {
   select: MousePointer2,
   line: Slash,
   circle: CircleIcon,
+  arc: Spline,
   pan: Hand,
   erase: Eraser
 };
@@ -216,12 +223,22 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
           <button
             type="button"
             aria-label="Split"
-            title={`Split selected line (${formatShortcutKey(SELECTION_SHORTCUTS.split)})`}
+            title={`Split selected line/circle (${formatShortcutKey(SELECTION_SHORTCUTS.split)})`}
             className={props.splitSelectionArmed ? 'icon-button active' : 'icon-button'}
             onClick={props.onSplitSelection}
             disabled={!props.canSplitSelection}
           >
             <Scissors className="toolbar-icon" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            aria-label="Flip Arc"
+            title={`Flip selected arcs (${formatShortcutKey(SELECTION_SHORTCUTS.flipArc)})`}
+            className="icon-button"
+            onClick={props.onFlipArcSelection}
+            disabled={!props.canFlipArcSelection}
+          >
+            <CircleOff className="toolbar-icon" aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -250,11 +267,25 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
         <div className="history-header">
           <h2>History</h2>
           <div className="history-controls">
-            <button type="button" onClick={props.onUndo} disabled={!props.canUndo}>
-              Undo
+            <button
+              type="button"
+              aria-label="Undo"
+              title="Undo"
+              className="icon-button"
+              onClick={props.onUndo}
+              disabled={!props.canUndo}
+            >
+              <IterationCw className="toolbar-icon" aria-hidden="true" />
             </button>
-            <button type="button" onClick={props.onRedo} disabled={!props.canRedo}>
-              Redo
+            <button
+              type="button"
+              aria-label="Redo"
+              title="Redo"
+              className="icon-button"
+              onClick={props.onRedo}
+              disabled={!props.canRedo}
+            >
+              <IterationCcw className="toolbar-icon" aria-hidden="true" />
             </button>
           </div>
         </div>

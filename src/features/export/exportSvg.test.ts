@@ -47,4 +47,26 @@ describe('buildTiledSvg', () => {
     expect(svg).toContain('<circle');
     expect(svg).toContain('fill="#ffffff"');
   });
+
+  it('exports arcs as path elements', () => {
+    const project = {
+      ...initialProjectState,
+      primitives: [
+        {
+          id: 'arc-1',
+          kind: 'arc' as const,
+          center: { x: 0, y: 0 },
+          start: { x: 8, y: 0 },
+          end: { x: 0, y: 8 },
+          clockwise: true,
+          largeArc: false,
+          color: '#111'
+        }
+      ]
+    };
+
+    const svg = buildSingleTileSvg(project);
+    expect(svg).toContain('<path');
+    expect(svg).toContain(' A ');
+  });
 });

@@ -10,6 +10,15 @@ export function translatePrimitive(primitive: Primitive, offset: Point): Primiti
     };
   }
 
+  if (primitive.kind === 'arc') {
+    return {
+      ...primitive,
+      center: { x: primitive.center.x + offset.x, y: primitive.center.y + offset.y },
+      start: { x: primitive.start.x + offset.x, y: primitive.start.y + offset.y },
+      end: { x: primitive.end.x + offset.x, y: primitive.end.y + offset.y }
+    };
+  }
+
   return {
     ...primitive,
     center: { x: primitive.center.x + offset.x, y: primitive.center.y + offset.y }

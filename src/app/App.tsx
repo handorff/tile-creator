@@ -92,6 +92,15 @@ function rotatePrimitiveAroundOrigin(primitive: Primitive, radians: number): Pri
     };
   }
 
+  if (primitive.kind === 'arc') {
+    return {
+      ...primitive,
+      center: rotatePointAroundOrigin(primitive.center, radians),
+      start: rotatePointAroundOrigin(primitive.start, radians),
+      end: rotatePointAroundOrigin(primitive.end, radians)
+    };
+  }
+
   return {
     ...primitive,
     center: rotatePointAroundOrigin(primitive.center, radians)
@@ -117,7 +126,7 @@ export function App(): JSX.Element {
   const [hiddenColors, setHiddenColors] = useState<string[]>([]);
   const [editorZoom, setEditorZoom] = useState<number>(1);
   const [selectedPrimitiveIds, setSelectedPrimitiveIds] = useState<string[]>([]);
-  const [splitSelectionLineId, setSplitSelectionLineId] = useState<string | null>(null);
+  const [splitSelectionPrimitiveId, setSplitSelectionPrimitiveId] = useState<string | null>(null);
   const [message, setMessage] = useState<string>('');
   const [isExportingGif, setIsExportingGif] = useState<boolean>(false);
   const [loadingPresetId, setLoadingPresetId] = useState<string | null>(null);
@@ -225,13 +234,13 @@ export function App(): JSX.Element {
     setHiddenColors((current) => current.filter((color) => availableColors.includes(color)));
   }, [availableColors]);
 
-  const selectedLinePrimitive = useMemo(() => {
+  const selectedSplitPrimitive = useMemo(() => {
     if (selectedPrimitiveIds.length !== 1) {
       return null;
     }
 
     const selected = project.primitives.find((primitive) => primitive.id === selectedPrimitiveIds[0]);
-    if (!selected || selected.kind !== 'line') {
+    if (!selected || (selected.kind !== 'line' && selected.kind !== 'circle')) {
       return null;
     }
 
@@ -270,9 +279,12 @@ export function App(): JSX.Element {
       strokeWidth: commonStrokeWidth
     };
   }, [project.activeColor, project.activeStrokeWidth, selectedPrimitives]);
-  const canSplitSelection = project.activeTool === 'select' && selectedLinePrimitive !== null;
+  const canSplitSelection = project.activeTool === 'select' && selectedSplitPrimitive !== null;
+  const canFlipArcSelection = selectedPrimitives.some((primitive) => primitive.kind === 'arc');
   const splitSelectionArmed =
-    canSplitSelection && !!selectedLinePrimitive && splitSelectionLineId === selectedLinePrimitive.id;
+    canSplitSelection &&
+    !!selectedSplitPrimitive &&
+    splitSelectionPrimitiveId === selectedSplitPrimitive.id;
   const visiblePrimitives = useMemo(
     () => project.primitives.filter((primitive) => !hiddenColorSet.has(primitive.color)),
     [hiddenColorSet, project.primitives]
@@ -280,18 +292,18 @@ export function App(): JSX.Element {
   const historyTimeline = useMemo(() => buildHistoryTimeline(project.history), [project.history]);
 
   useEffect(() => {
-    setSplitSelectionLineId((current) => {
+    setSplitSelectionPrimitiveId((current) => {
       if (!current) {
         return null;
       }
 
-      if (project.activeTool !== 'select' || !selectedLinePrimitive) {
+      if (project.activeTool !== 'select' || !selectedSplitPrimitive) {
         return null;
       }
 
-      return current === selectedLinePrimitive.id ? current : null;
+      return current === selectedSplitPrimitive.id ? current : null;
     });
-  }, [project.activeTool, selectedLinePrimitive]);
+  }, [project.activeTool, selectedSplitPrimitive]);
 
   const addPrimitive = (primitive: Primitive): void => {
     dispatch({ type: 'add-primitive', primitive });
@@ -386,18 +398,30 @@ export function App(): JSX.Element {
       firstId: createId('line'),
       secondId: createId('line')
     });
-    setSplitSelectionLineId(null);
+    setSplitSelectionPrimitiveId(null);
+  };
+
+  const splitCircle = (id: string, firstPoint: Point, secondPoint: Point): void => {
+    dispatch({
+      type: 'split-circle',
+      id,
+      firstPoint,
+      secondPoint,
+      firstArcId: createId('arc'),
+      secondArcId: createId('arc')
+    });
+    setSplitSelectionPrimitiveId(null);
   };
 
   const toggleSplitSelection = useCallback((): void => {
-    if (!selectedLinePrimitive || project.activeTool !== 'select') {
+    if (!selectedSplitPrimitive || project.activeTool !== 'select') {
       return;
     }
 
-    setSplitSelectionLineId((current) =>
-      current === selectedLinePrimitive.id ? null : selectedLinePrimitive.id
+    setSplitSelectionPrimitiveId((current) =>
+      current === selectedSplitPrimitive.id ? null : selectedSplitPrimitive.id
     );
-  }, [project.activeTool, selectedLinePrimitive]);
+  }, [project.activeTool, selectedSplitPrimitive]);
 
   const duplicateSelected = useCallback((): void => {
     if (selectedPrimitiveIds.length === 0) {
@@ -453,6 +477,32 @@ export function App(): JSX.Element {
     [project.primitives, project.tile.shape, selectedPrimitiveIds]
   );
 
+  const flipSelectedArcs = useCallback((): void => {
+    if (selectedPrimitiveIds.length === 0) {
+      return;
+    }
+
+    const selected = new Set(selectedPrimitiveIds);
+    const arcs = project.primitives
+      .filter((primitive): primitive is Extract<Primitive, { kind: 'arc' }> => {
+        return primitive.kind === 'arc' && selected.has(primitive.id);
+      })
+      .map((primitive) => ({
+        ...primitive,
+        largeArc: !primitive.largeArc
+      }));
+
+    if (arcs.length === 0) {
+      return;
+    }
+
+    dispatch({
+      type: 'update-primitives',
+      primitives: arcs,
+      historyDescription: `Flip ${arcs.length} ${arcs.length === 1 ? 'arc' : 'arcs'}`
+    });
+  }, [project.primitives, selectedPrimitiveIds]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       const key = event.key.toLowerCase();
@@ -501,6 +551,12 @@ export function App(): JSX.Element {
         return;
       }
 
+      if (key === SELECTION_SHORTCUTS.flipArc) {
+        event.preventDefault();
+        flipSelectedArcs();
+        return;
+      }
+
       if (key === SELECTION_SHORTCUTS.rotateCcw) {
         event.preventDefault();
         rotateSelected(false);
@@ -515,7 +571,7 @@ export function App(): JSX.Element {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [duplicateSelected, rotateSelected, setTool, toggleSplitSelection]);
+  }, [duplicateSelected, flipSelectedArcs, rotateSelected, setTool, toggleSplitSelection]);
 
   const clearTile = (): void => {
     if (project.primitives.length === 0) {
@@ -523,7 +579,7 @@ export function App(): JSX.Element {
     }
 
     const confirmed = window.confirm(
-      'Clear the current tile and remove all lines/circles? This can be undone with Undo.'
+      'Clear the current tile and remove all lines/circles/arcs? This can be undone with Undo.'
     );
     if (!confirmed) {
       return;
@@ -531,7 +587,7 @@ export function App(): JSX.Element {
 
     dispatch({ type: 'clear' });
     setSelectedPrimitiveIds([]);
-    setSplitSelectionLineId(null);
+    setSplitSelectionPrimitiveId(null);
     setMessage('Cleared tile.');
   };
 
@@ -577,7 +633,7 @@ export function App(): JSX.Element {
       const loaded = deserializeProject(text);
       dispatch({ type: 'hydrate', state: loaded.project });
       setPattern(loaded.pattern);
-      setSplitSelectionLineId(null);
+      setSplitSelectionPrimitiveId(null);
       setMessage('Imported project JSON.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not import project file.');
@@ -601,7 +657,7 @@ export function App(): JSX.Element {
       setPresetProjects((current) => ({ ...current, [preset.id]: loaded }));
       setHiddenColors([]);
       setSelectedPrimitiveIds([]);
-      setSplitSelectionLineId(null);
+      setSplitSelectionPrimitiveId(null);
       setIsPresetGalleryOpen(false);
       setMessage(`Loaded ${preset.name}.`);
     } catch (error) {
@@ -670,6 +726,7 @@ export function App(): JSX.Element {
           historyTimeline={historyTimeline}
           selectedCount={selectedPrimitiveIds.length}
           canSplitSelection={canSplitSelection}
+          canFlipArcSelection={canFlipArcSelection}
           splitSelectionArmed={splitSelectionArmed}
           onShapeChange={setShape}
           onToolChange={setTool}
@@ -680,6 +737,7 @@ export function App(): JSX.Element {
           onOnlyVisibleColor={setOnlyVisibleColor}
           onDuplicateSelection={duplicateSelected}
           onSplitSelection={toggleSplitSelection}
+          onFlipArcSelection={flipSelectedArcs}
           onRotateSelectionCcw={() => rotateSelected(false)}
           onRotateSelectionCw={() => rotateSelected(true)}
           onUndo={() => dispatch({ type: 'undo' })}
@@ -713,8 +771,9 @@ export function App(): JSX.Element {
                 onZoomChange={(nextZoom) => setEditorZoom(clampEditorZoom(nextZoom))}
                 onAddPrimitive={addPrimitive}
                 onUpdatePrimitive={updatePrimitive}
-                splitSelectionLineId={splitSelectionLineId}
+                splitSelectionPrimitiveId={splitSelectionPrimitiveId}
                 onSplitLine={splitLine}
+                onSplitCircle={splitCircle}
                 onErasePrimitive={erasePrimitive}
                 onErasePrimitives={erasePrimitives}
                 onSelectionChange={setSelectedPrimitiveIds}

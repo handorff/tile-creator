@@ -2,6 +2,7 @@ import type { Point, Primitive, TileConfig } from '../types/model';
 import { getSeedSnapPoints, getTilePolygon } from './tile';
 import { intersections } from './intersections';
 import { clamp, cross, distance, dot, pointKey, subtract } from '../utils/math';
+import { arcMidpoint, normalizeArc } from './arc';
 
 export interface SnapContext {
   points: Point[];
@@ -23,8 +24,11 @@ export function gatherSnapPoints(primitives: Primitive[], tile: TileConfig): Poi
         x: (primitive.a.x + primitive.b.x) / 2,
         y: (primitive.a.y + primitive.b.y) / 2
       });
-    } else {
+    } else if (primitive.kind === 'circle') {
       points.push(primitive.center);
+    } else {
+      const normalized = normalizeArc(primitive);
+      points.push(normalized.center, normalized.start, normalized.end, arcMidpoint(normalized));
     }
   }
 

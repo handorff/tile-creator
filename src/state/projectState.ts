@@ -8,6 +8,7 @@ import type {
   Tool
 } from '../types/model';
 import { clamp, distance, dot, subtract } from '../utils/math';
+import { isClockwiseMinorArc, projectPointToCircle } from '../geometry/arc';
 
 const DEFAULT_TILE_SIZE = 120;
 export const FIXED_STROKE_WIDTH = 2;
@@ -76,6 +77,14 @@ export type ProjectAction =
   | { type: 'update-primitive'; primitive: Primitive }
   | { type: 'update-primitives'; primitives: Primitive[]; historyDescription?: string }
   | { type: 'split-line'; id: string; point: Point; firstId: string; secondId: string }
+  | {
+      type: 'split-circle';
+      id: string;
+      firstPoint: Point;
+      secondPoint: Point;
+      firstArcId: string;
+      secondArcId: string;
+    }
   | { type: 'erase-primitive'; id: string }
   | { type: 'erase-primitives'; ids: string[] }
   | { type: 'undo' }
@@ -119,7 +128,10 @@ function setTileShape(state: ProjectState, shape: TileShape): ProjectState {
 
 function addPrimitive(state: ProjectState, primitive: Primitive): ProjectState {
   const normalized = withNormalizedStrokeWidth(primitive);
-  const next = withHistory(state, normalized.kind === 'line' ? 'Add line' : 'Add circle');
+  const next = withHistory(
+    state,
+    normalized.kind === 'line' ? 'Add line' : normalized.kind === 'circle' ? 'Add circle' : 'Add arc'
+  );
   return {
     ...next,
     primitives: [...state.primitives, normalized]
@@ -188,6 +200,16 @@ function samePrimitive(a: Primitive, b: Primitive): boolean {
 
   if (a.kind === 'circle' && b.kind === 'circle') {
     return samePoint(a.center, b.center) && a.radius === b.radius;
+  }
+
+  if (a.kind === 'arc' && b.kind === 'arc') {
+    return (
+      samePoint(a.center, b.center) &&
+      samePoint(a.start, b.start) &&
+      samePoint(a.end, b.end) &&
+      a.clockwise === b.clockwise &&
+      a.largeArc === b.largeArc
+    );
   }
 
   return false;
@@ -357,6 +379,64 @@ function splitLine(
   };
 }
 
+function splitCircle(
+  state: ProjectState,
+  id: string,
+  firstPoint: Point,
+  secondPoint: Point,
+  firstArcId: string,
+  secondArcId: string
+): ProjectState {
+  const index = state.primitives.findIndex((primitive) => primitive.id === id);
+  if (index < 0) {
+    return state;
+  }
+
+  const candidate = state.primitives[index];
+  if (candidate.kind !== 'circle') {
+    return state;
+  }
+
+  const projectedFirst = projectPointToCircle(candidate.center, candidate.radius, firstPoint);
+  const projectedSecond = projectPointToCircle(candidate.center, candidate.radius, secondPoint);
+  if (distance(projectedFirst, projectedSecond) <= 1) {
+    return state;
+  }
+
+  const clockwise = isClockwiseMinorArc(candidate.center, projectedFirst, projectedSecond);
+  const next = withHistory(state, 'Split circle');
+  const first: Primitive = {
+    id: firstArcId,
+    kind: 'arc',
+    center: candidate.center,
+    start: projectedFirst,
+    end: projectedSecond,
+    clockwise,
+    largeArc: false,
+    color: candidate.color,
+    strokeWidth: getPrimitiveStrokeWidth(candidate)
+  };
+  const second: Primitive = {
+    id: secondArcId,
+    kind: 'arc',
+    center: candidate.center,
+    start: projectedFirst,
+    end: projectedSecond,
+    clockwise,
+    largeArc: true,
+    color: candidate.color,
+    strokeWidth: getPrimitiveStrokeWidth(candidate)
+  };
+
+  const updated = [...state.primitives];
+  updated.splice(index, 1, first, second);
+
+  return {
+    ...next,
+    primitives: updated
+  };
+}
+
 function undo(state: ProjectState): ProjectState {
   if (state.history.past.length === 0) {
     return state;
@@ -447,6 +527,15 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return updatePrimitives(state, action.primitives, action.historyDescription);
     case 'split-line':
       return splitLine(state, action.id, action.point, action.firstId, action.secondId);
+    case 'split-circle':
+      return splitCircle(
+        state,
+        action.id,
+        action.firstPoint,
+        action.secondPoint,
+        action.firstArcId,
+        action.secondArcId
+      );
     case 'erase-primitive':
       return erasePrimitive(state, action.id);
     case 'erase-primitives':

@@ -66,6 +66,19 @@ function isPrimitive(value: unknown): value is Primitive {
     );
   }
 
+  if (primitive.kind === 'arc') {
+    return (
+      typeof primitive.id === 'string' &&
+      typeof primitive.color === 'string' &&
+      (primitive.strokeWidth === undefined || typeof primitive.strokeWidth === 'number') &&
+      isPoint(primitive.center) &&
+      isPoint(primitive.start) &&
+      isPoint(primitive.end) &&
+      typeof primitive.clockwise === 'boolean' &&
+      typeof primitive.largeArc === 'boolean'
+    );
+  }
+
   return false;
 }
 
@@ -74,6 +87,7 @@ function isTool(value: unknown): value is Tool {
     value === 'select' ||
     value === 'line' ||
     value === 'circle' ||
+    value === 'arc' ||
     value === 'erase' ||
     value === 'pan'
   );

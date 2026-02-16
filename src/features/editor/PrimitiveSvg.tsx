@@ -1,5 +1,6 @@
 import type { Primitive } from '../../types/model';
 import { getPrimitiveStrokeWidth } from '../../state/projectState';
+import { arcPathD } from '../../geometry/arc';
 
 interface PrimitiveSvgProps {
   primitive: Primitive;
@@ -18,6 +19,18 @@ export function PrimitiveSvg({ primitive, strokeWidth, className }: PrimitiveSvg
         y1={primitive.a.y}
         x2={primitive.b.x}
         y2={primitive.b.y}
+        stroke={primitive.color}
+        strokeWidth={width}
+        fill="none"
+      />
+    );
+  }
+
+  if (primitive.kind === 'arc') {
+    return (
+      <path
+        className={className}
+        d={arcPathD(primitive)}
         stroke={primitive.color}
         strokeWidth={width}
         fill="none"

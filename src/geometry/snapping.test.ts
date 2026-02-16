@@ -163,4 +163,29 @@ describe('snapping', () => {
     expect(snappedEnd?.x).toBeCloseTo(10, 6);
     expect(snappedEnd?.y).toBeCloseTo(5, 6);
   });
+
+  it('includes arc handles and midpoint in snap targets', () => {
+    const points = gatherSnapPoints(
+      [
+        {
+          id: 'arc-1',
+          kind: 'arc',
+          center: { x: 0, y: 0 },
+          start: { x: 10, y: 0 },
+          end: { x: 0, y: 10 },
+          clockwise: true,
+          largeArc: false,
+          color: '#111'
+        }
+      ],
+      { shape: 'square', size: 50 }
+    );
+
+    expect(points).toContainEqual({ x: 0, y: 0 });
+    expect(points).toContainEqual({ x: 10, y: 0 });
+    expect(points).toContainEqual({ x: 0, y: 10 });
+    expect(points.some((point) => Math.abs(point.x - 7.071) < 0.01 && Math.abs(point.y - 7.071) < 0.01)).toBe(
+      true
+    );
+  });
 });

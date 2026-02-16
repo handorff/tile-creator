@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import {
+  arcPathD,
+  arcRadius,
   gatherSnapSegments,
   gatherSnapPoints,
   getDirectionalSnapOnSegments,
@@ -9,7 +11,10 @@ import {
   getSnapPointOnSegments,
   getTilePolygon,
   hitTestPrimitive,
+  isClockwiseMinorArc,
+  normalizeArc,
   periodicNeighborOffsets,
+  projectPointToCircle,
   polygonBounds,
   translatePrimitive
 } from '../../geometry';
@@ -30,8 +35,9 @@ interface EditorCanvasProps {
   onZoomChange: (nextZoom: number) => void;
   onAddPrimitive: (primitive: Primitive) => void;
   onUpdatePrimitive: (primitive: Primitive) => void;
-  splitSelectionLineId: string | null;
+  splitSelectionPrimitiveId: string | null;
   onSplitLine: (id: string, point: Point) => void;
+  onSplitCircle: (id: string, firstPoint: Point, secondPoint: Point) => void;
   onErasePrimitive: (id: string) => void;
   onErasePrimitives: (ids: string[]) => void;
   onSelectionChange: (ids: string[]) => void;
@@ -40,9 +46,26 @@ interface EditorCanvasProps {
 type DraftState =
   | { kind: 'line'; start: Point; end: Point }
   | { kind: 'circle'; center: Point; radius: number }
+  | { kind: 'arc'; stage: 'start'; center: Point; cursor: Point }
+  | {
+      kind: 'arc';
+      stage: 'end';
+      center: Point;
+      start: Point;
+      end: Point;
+      clockwise: boolean;
+      largeArc: boolean;
+    }
   | null;
 
-type EditHandle = 'line-a' | 'line-b' | 'circle-center' | 'circle-radius';
+type EditHandle =
+  | 'line-a'
+  | 'line-b'
+  | 'circle-center'
+  | 'circle-radius'
+  | 'arc-center'
+  | 'arc-start'
+  | 'arc-end';
 
 interface EditDragState {
   primitiveId: string;
@@ -54,6 +77,11 @@ interface PanDragState {
   clientX: number;
   clientY: number;
   startOffset: Point;
+}
+
+interface SplitCirclePreviewState {
+  id: string;
+  point: Point;
 }
 
 const DRAW_MIN_DISTANCE = 1;
@@ -111,6 +139,22 @@ function toWorldPoint(
   return mapClientPointToWorld({ x: event.clientX, y: event.clientY }, rect, viewBox);
 }
 
+function capturePointer(target: SVGSVGElement, pointerId: number): void {
+  if (typeof target.setPointerCapture === 'function') {
+    target.setPointerCapture(pointerId);
+  }
+}
+
+function releasePointer(target: SVGSVGElement, pointerId: number): void {
+  if (
+    typeof target.hasPointerCapture === 'function' &&
+    typeof target.releasePointerCapture === 'function' &&
+    target.hasPointerCapture(pointerId)
+  ) {
+    target.releasePointerCapture(pointerId);
+  }
+}
+
 function polygonPath(points: Point[]): string {
   if (points.length === 0) {
     return '';
@@ -134,6 +178,19 @@ function editHandleAtPoint(point: Point, primitive: Primitive, tolerance: number
     }
     if (distance(point, primitive.b) <= tolerance) {
       return 'line-b';
+    }
+    return null;
+  }
+
+  if (primitive.kind === 'arc') {
+    if (distance(point, primitive.center) <= tolerance) {
+      return 'arc-center';
+    }
+    if (distance(point, primitive.start) <= tolerance) {
+      return 'arc-start';
+    }
+    if (distance(point, primitive.end) <= tolerance) {
+      return 'arc-end';
     }
     return null;
   }
@@ -169,6 +226,32 @@ function applyEditHandle(preview: Primitive, handle: EditHandle, point: Point): 
     };
   }
 
+  if (preview.kind === 'arc' && handle === 'arc-center') {
+    const delta = subtract(point, preview.center);
+    return normalizeArc({
+      ...preview,
+      center: point,
+      start: { x: preview.start.x + delta.x, y: preview.start.y + delta.y },
+      end: { x: preview.end.x + delta.x, y: preview.end.y + delta.y }
+    });
+  }
+
+  if (preview.kind === 'arc' && handle === 'arc-start') {
+    const radius = arcRadius(preview);
+    return normalizeArc({
+      ...preview,
+      start: projectPointToCircle(preview.center, radius, point)
+    });
+  }
+
+  if (preview.kind === 'arc' && handle === 'arc-end') {
+    const radius = arcRadius(preview);
+    return normalizeArc({
+      ...preview,
+      end: projectPointToCircle(preview.center, radius, point)
+    });
+  }
+
   return preview;
 }
 
@@ -194,6 +277,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
   const [drawing, setDrawing] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [editDrag, setEditDrag] = useState<EditDragState | null>(null);
+  const [splitCirclePreview, setSplitCirclePreview] = useState<SplitCirclePreviewState | null>(null);
   const [panOffset, setPanOffset] = useState<Point>({ x: 0, y: 0 });
   const [panDrag, setPanDrag] = useState<PanDragState | null>(null);
   const baseViewBox = useMemo(() => viewBoxForTile(props.tile), [props.tile]);
@@ -225,7 +309,13 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
     if (props.activeTool !== 'select') {
       setSelectedIds([]);
       setEditDrag(null);
+      setSplitCirclePreview(null);
     }
+  }, [props.activeTool]);
+
+  useEffect(() => {
+    setDrawing(false);
+    setDraft(null);
   }, [props.activeTool]);
 
   useEffect(() => {
@@ -275,14 +365,29 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
     return renderedPrimitives.filter((primitive) => selectedSet.has(primitive.id));
   }, [renderedPrimitives, selectedIds]);
   const editableSelection = selectedPrimitives.length === 1 ? selectedPrimitives[0] : null;
-  const splitTargetLine = useMemo(
+  const splitTargetPrimitive = useMemo(
     () =>
       renderedPrimitives.find(
-        (primitive): primitive is Extract<Primitive, { kind: 'line' }> =>
-          primitive.id === props.splitSelectionLineId && primitive.kind === 'line'
+        (primitive): primitive is Extract<Primitive, { kind: 'line' | 'circle' }> =>
+          primitive.id === props.splitSelectionPrimitiveId &&
+          (primitive.kind === 'line' || primitive.kind === 'circle')
       ) ?? null,
-    [props.splitSelectionLineId, renderedPrimitives]
+    [props.splitSelectionPrimitiveId, renderedPrimitives]
   );
+
+  useEffect(() => {
+    setSplitCirclePreview((current) => {
+      if (!current) {
+        return null;
+      }
+
+      if (splitTargetPrimitive?.kind !== 'circle') {
+        return null;
+      }
+
+      return current.id === splitTargetPrimitive.id ? current : null;
+    });
+  }, [splitTargetPrimitive]);
 
   const snapPoints = useMemo(
     () => gatherSnapPoints(renderedPrimitives, props.tile),
@@ -352,7 +457,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
         clientY: event.clientY,
         startOffset: panOffset
       });
-      event.currentTarget.setPointerCapture(event.pointerId);
+      capturePointer(event.currentTarget, event.pointerId);
       return;
     }
 
@@ -365,10 +470,30 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
       return;
     }
 
-    if (props.activeTool === 'select' && splitTargetLine) {
+    if (props.activeTool === 'select' && splitTargetPrimitive) {
       const snappedPoint = resolvePoint(raw);
-      const splitPoint = projectPointToSegment(snappedPoint, splitTargetLine.a, splitTargetLine.b);
-      props.onSplitLine(splitTargetLine.id, splitPoint);
+      if (splitTargetPrimitive.kind === 'line') {
+        const splitPoint = projectPointToSegment(snappedPoint, splitTargetPrimitive.a, splitTargetPrimitive.b);
+        props.onSplitLine(splitTargetPrimitive.id, splitPoint);
+        return;
+      }
+
+      const splitPoint = projectPointToCircle(
+        splitTargetPrimitive.center,
+        splitTargetPrimitive.radius,
+        snappedPoint
+      );
+      setSplitCirclePreview((current) => {
+        if (!current || current.id !== splitTargetPrimitive.id) {
+          return {
+            id: splitTargetPrimitive.id,
+            point: splitPoint
+          };
+        }
+
+        props.onSplitCircle(splitTargetPrimitive.id, current.point, splitPoint);
+        return null;
+      });
       return;
     }
 
@@ -381,7 +506,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
             handle,
             preview: editableSelection
           });
-          event.currentTarget.setPointerCapture(event.pointerId);
+          capturePointer(event.currentTarget, event.pointerId);
           return;
         }
       }
@@ -405,6 +530,60 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
 
     setSelectedIds([]);
 
+    if (props.activeTool === 'arc') {
+      const point = resolvePoint(raw);
+      if (!draft || draft.kind !== 'arc') {
+        setDraft({
+          kind: 'arc',
+          stage: 'start',
+          center: point,
+          cursor: point
+        });
+        return;
+      }
+
+      if (draft.stage === 'start') {
+        const radius = distance(draft.center, point);
+        if (radius <= DRAW_MIN_DISTANCE) {
+          return;
+        }
+
+        const start = projectPointToCircle(draft.center, radius, point);
+        setDraft({
+          kind: 'arc',
+          stage: 'end',
+          center: draft.center,
+          start,
+          end: start,
+          clockwise: true,
+          largeArc: event.shiftKey
+        });
+        return;
+      }
+
+      const end = projectPointToCircle(draft.center, arcRadius(draft), point);
+      if (distance(end, draft.start) <= DRAW_MIN_DISTANCE) {
+        return;
+      }
+
+      const clockwise = isClockwiseMinorArc(draft.center, draft.start, end);
+      props.onAddPrimitive(
+        normalizeArc({
+          id: createId('arc'),
+          kind: 'arc',
+          center: draft.center,
+          start: draft.start,
+          end,
+          clockwise,
+          largeArc: event.shiftKey,
+          color: props.activeColor,
+          strokeWidth: props.activeStrokeWidth
+        })
+      );
+      setDraft(null);
+      return;
+    }
+
     const point = resolvePoint(raw);
     if (props.activeTool === 'line') {
       setDraft({ kind: 'line', start: point, end: point });
@@ -415,7 +594,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
     }
 
     setDrawing(true);
-    event.currentTarget.setPointerCapture(event.pointerId);
+    capturePointer(event.currentTarget, event.pointerId);
   };
 
   const handlePointerMove = (event: ReactPointerEvent<SVGSVGElement>): void => {
@@ -475,6 +654,30 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
       return;
     }
 
+    if (draft && draft.kind === 'arc' && draft.stage === 'end') {
+      const raw = toWorldPoint(event, viewBox);
+      const point = resolvePoint(raw);
+      const end = projectPointToCircle(draft.center, arcRadius(draft), point);
+      const clockwise = isClockwiseMinorArc(draft.center, draft.start, end);
+      setDraft({
+        ...draft,
+        end,
+        clockwise,
+        largeArc: event.shiftKey
+      });
+      return;
+    }
+
+    if (draft && draft.kind === 'arc' && draft.stage === 'start') {
+      const raw = toWorldPoint(event, viewBox);
+      const point = resolvePoint(raw);
+      setDraft({
+        ...draft,
+        cursor: point
+      });
+      return;
+    }
+
     if (!drawing || !draft) {
       return;
     }
@@ -482,6 +685,10 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
     const raw = toWorldPoint(event, viewBox);
     if (draft.kind === 'line') {
       setDraft({ ...draft, end: resolveLineEnd(draft.start, raw) });
+      return;
+    }
+
+    if (draft.kind !== 'circle') {
       return;
     }
 
@@ -495,9 +702,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
   const handlePointerUp = (event: ReactPointerEvent<SVGSVGElement>): void => {
     if (panDrag) {
       setPanDrag(null);
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.releasePointerCapture(event.pointerId);
-      }
+      releasePointer(event.currentTarget, event.pointerId);
       return;
     }
 
@@ -505,47 +710,53 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
       props.onUpdatePrimitive(editDrag.preview);
       setEditDrag(null);
 
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.releasePointerCapture(event.pointerId);
-      }
+      releasePointer(event.currentTarget, event.pointerId);
       return;
     }
 
-    if (drawing && draft) {
-      if (draft.kind === 'line') {
-        const lineLength = distance(draft.start, draft.end);
-        if (lineLength > DRAW_MIN_DISTANCE) {
-          props.onAddPrimitive({
-            id: createId('line'),
-            kind: 'line',
-            a: draft.start,
-            b: draft.end,
-            color: props.activeColor,
-            strokeWidth: props.activeStrokeWidth
-          });
-        }
-      } else if (draft.radius > DRAW_MIN_DISTANCE) {
+    if (!drawing || !draft) {
+      releasePointer(event.currentTarget, event.pointerId);
+      return;
+    }
+
+    if (draft.kind === 'line') {
+      const lineLength = distance(draft.start, draft.end);
+      if (lineLength > DRAW_MIN_DISTANCE) {
         props.onAddPrimitive({
-          id: createId('circle'),
-          kind: 'circle',
-          center: draft.center,
-          radius: draft.radius,
+          id: createId('line'),
+          kind: 'line',
+          a: draft.start,
+          b: draft.end,
           color: props.activeColor,
           strokeWidth: props.activeStrokeWidth
         });
       }
+    } else if (draft.kind === 'circle' && draft.radius > DRAW_MIN_DISTANCE) {
+      props.onAddPrimitive({
+        id: createId('circle'),
+        kind: 'circle',
+        center: draft.center,
+        radius: draft.radius,
+        color: props.activeColor,
+        strokeWidth: props.activeStrokeWidth
+      });
     }
 
     setDrawing(false);
     setDraft(null);
 
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
+    releasePointer(event.currentTarget, event.pointerId);
   };
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape' && draft?.kind === 'arc') {
+        event.preventDefault();
+        setDrawing(false);
+        setDraft(null);
+        return;
+      }
+
       if (selectedIds.length === 0) {
         return;
       }
@@ -574,7 +785,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onErasePrimitives, selectedIds]);
+  }, [draft, onErasePrimitives, selectedIds]);
 
   const handleContextMenu = (event: React.MouseEvent<SVGSVGElement>): void => {
     event.preventDefault();
@@ -641,16 +852,25 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
             ))
           : null}
 
-        {splitTargetLine ? (
+        {splitTargetPrimitive ? (
           <PrimitiveSvg
-            primitive={splitTargetLine}
-            strokeWidth={Math.max(2, getPrimitiveStrokeWidth(splitTargetLine) + 1)}
+            primitive={splitTargetPrimitive}
+            strokeWidth={Math.max(2, getPrimitiveStrokeWidth(splitTargetPrimitive) + 1)}
             className="split-target-primitive"
           />
         ) : null}
 
+        {splitCirclePreview && splitTargetPrimitive?.kind === 'circle' ? (
+          <circle
+            className="edit-handle"
+            cx={splitCirclePreview.point.x}
+            cy={splitCirclePreview.point.y}
+            r={props.tile.size * 0.025}
+          />
+        ) : null}
+
         {props.activeTool === 'select' &&
-        !splitTargetLine &&
+        !splitTargetPrimitive &&
         editableSelection &&
         editableSelection.kind === 'line' ? (
           <>
@@ -670,7 +890,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
         ) : null}
 
         {props.activeTool === 'select' &&
-        !splitTargetLine &&
+        !splitTargetPrimitive &&
         editableSelection &&
         editableSelection.kind === 'circle' &&
         circleHandle ? (
@@ -692,6 +912,46 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
               className="edit-handle"
               cx={circleHandle.x}
               cy={circleHandle.y}
+              r={props.tile.size * 0.03}
+            />
+          </>
+        ) : null}
+
+        {props.activeTool === 'select' &&
+        !splitTargetPrimitive &&
+        editableSelection &&
+        editableSelection.kind === 'arc' ? (
+          <>
+            <line
+              className="edit-guide"
+              x1={editableSelection.center.x}
+              y1={editableSelection.center.y}
+              x2={editableSelection.start.x}
+              y2={editableSelection.start.y}
+            />
+            <line
+              className="edit-guide"
+              x1={editableSelection.center.x}
+              y1={editableSelection.center.y}
+              x2={editableSelection.end.x}
+              y2={editableSelection.end.y}
+            />
+            <circle
+              className="edit-handle"
+              cx={editableSelection.center.x}
+              cy={editableSelection.center.y}
+              r={props.tile.size * 0.03}
+            />
+            <circle
+              className="edit-handle"
+              cx={editableSelection.start.x}
+              cy={editableSelection.start.y}
+              r={props.tile.size * 0.03}
+            />
+            <circle
+              className="edit-handle"
+              cx={editableSelection.end.x}
+              cy={editableSelection.end.y}
               r={props.tile.size * 0.03}
             />
           </>
@@ -721,11 +981,93 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
           />
         ) : null}
 
+        {draft && draft.kind === 'arc' && draft.stage === 'end' ? (
+          <>
+            <line
+              className="edit-guide"
+              x1={draft.center.x}
+              y1={draft.center.y}
+              x2={draft.start.x}
+              y2={draft.start.y}
+            />
+            <line
+              className="edit-guide"
+              x1={draft.center.x}
+              y1={draft.center.y}
+              x2={draft.end.x}
+              y2={draft.end.y}
+            />
+            <circle
+              className="edit-handle"
+              cx={draft.center.x}
+              cy={draft.center.y}
+              r={props.tile.size * 0.03}
+            />
+            <circle
+              className="edit-handle"
+              cx={draft.start.x}
+              cy={draft.start.y}
+              r={props.tile.size * 0.03}
+            />
+            <circle
+              className="edit-handle"
+              cx={draft.end.x}
+              cy={draft.end.y}
+              r={props.tile.size * 0.03}
+            />
+            <path
+              className="draft"
+              d={arcPathD(
+                normalizeArc({
+                  id: 'draft-arc',
+                  kind: 'arc',
+                  center: draft.center,
+                  start: draft.start,
+                  end: draft.end,
+                  clockwise: draft.clockwise,
+                  largeArc: draft.largeArc,
+                  color: props.activeColor,
+                  strokeWidth: props.activeStrokeWidth
+                })
+              )}
+              stroke={props.activeColor}
+              strokeWidth={props.activeStrokeWidth}
+              fill="none"
+            />
+          </>
+        ) : null}
+
+        {draft && draft.kind === 'arc' && draft.stage === 'start' ? (
+          <>
+            <circle
+              className="edit-handle"
+              cx={draft.center.x}
+              cy={draft.center.y}
+              r={props.tile.size * 0.03}
+            />
+            <line
+              className="edit-guide"
+              x1={draft.center.x}
+              y1={draft.center.y}
+              x2={draft.cursor.x}
+              y2={draft.cursor.y}
+            />
+            <circle
+              className="edit-handle"
+              cx={draft.cursor.x}
+              cy={draft.cursor.y}
+              r={props.tile.size * 0.025}
+            />
+          </>
+        ) : null}
+
         <path d={tilePath} className="tile-outline" />
       </svg>
       <p className="hint">
         Scroll to zoom. Right-click-drag pans any time. Shift+click adds or removes selection. To
-        split, select one line and use Split (X), then choose a snapped split point.
+        split, select one line/circle and use Split (X). Lines split in one click; circles split in
+        two clicks. Arc tool flow: click center, click start, click end. Hold Shift while placing
+        end for the major arc.
       </p>
     </section>
   );

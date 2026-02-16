@@ -18,3 +18,13 @@ export {
 } from './snapping';
 export { replicatePattern, translatePrimitive } from './transforms';
 export { hitTestPrimitive } from './hitTest';
+export {
+  arcRadius,
+  normalizeArc,
+  projectPointToCircle,
+  arcPathD,
+  isPointNearArc,
+  isPointOnArcSweep,
+  arcMidpoint,
+  isClockwiseMinorArc
+} from './arc';

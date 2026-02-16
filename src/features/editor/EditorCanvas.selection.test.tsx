@@ -41,8 +41,9 @@ describe('EditorCanvas selection', () => {
         onZoomChange={vi.fn()}
         onAddPrimitive={vi.fn()}
         onUpdatePrimitive={vi.fn()}
-        splitSelectionLineId={null}
+        splitSelectionPrimitiveId={null}
         onSplitLine={vi.fn()}
+        onSplitCircle={vi.fn()}
         onErasePrimitive={vi.fn()}
         onErasePrimitives={vi.fn()}
         onSelectionChange={onSelectionChange}
@@ -121,8 +122,9 @@ describe('EditorCanvas selection', () => {
         onZoomChange={vi.fn()}
         onAddPrimitive={vi.fn()}
         onUpdatePrimitive={vi.fn()}
-        splitSelectionLineId="line-1"
+        splitSelectionPrimitiveId="line-1"
         onSplitLine={onSplitLine}
+        onSplitCircle={vi.fn()}
         onErasePrimitive={vi.fn()}
         onErasePrimitives={vi.fn()}
         onSelectionChange={vi.fn()}
@@ -147,5 +149,338 @@ describe('EditorCanvas selection', () => {
 
     await waitFor(() => expect(onSplitLine).toHaveBeenCalledTimes(1));
     expect(onSplitLine).toHaveBeenCalledWith('line-1', expect.any(Object));
+  });
+
+  it('splits the armed selected circle after two clicks', async () => {
+    if (!window.PointerEvent) {
+      Object.defineProperty(window, 'PointerEvent', {
+        value: MouseEvent,
+        writable: true
+      });
+    }
+
+    const onSplitCircle = vi.fn();
+    const { container } = render(
+      <EditorCanvas
+        tile={{ shape: 'square', size: 100 }}
+        primitives={primitives}
+        activeTool="select"
+        activeColor="#111111"
+        activeStrokeWidth={2}
+        zoom={1}
+        onZoomChange={vi.fn()}
+        onAddPrimitive={vi.fn()}
+        onUpdatePrimitive={vi.fn()}
+        splitSelectionPrimitiveId="circle-1"
+        onSplitLine={vi.fn()}
+        onSplitCircle={onSplitCircle}
+        onErasePrimitive={vi.fn()}
+        onErasePrimitives={vi.fn()}
+        onSelectionChange={vi.fn()}
+      />
+    );
+
+    const canvas = container.querySelector('svg');
+    expect(canvas).not.toBeNull();
+    if (!canvas) {
+      return;
+    }
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 700, 700));
+
+    fireEvent.pointerDown(canvas, {
+      clientX: 570,
+      clientY: 550,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+
+    fireEvent.pointerDown(canvas, {
+      clientX: 595,
+      clientY: 525,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+
+    await waitFor(() => expect(onSplitCircle).toHaveBeenCalledTimes(1));
+    expect(onSplitCircle).toHaveBeenCalledWith('circle-1', expect.any(Object), expect.any(Object));
+  });
+
+  it('selects and edits an arc with handle drag', async () => {
+    if (!window.PointerEvent) {
+      Object.defineProperty(window, 'PointerEvent', {
+        value: MouseEvent,
+        writable: true
+      });
+    }
+
+    const onSelectionChange = vi.fn();
+    const onUpdatePrimitive = vi.fn();
+    const { container } = render(
+      <EditorCanvas
+        tile={{ shape: 'square', size: 100 }}
+        primitives={[
+          {
+            id: 'arc-1',
+            kind: 'arc',
+            center: { x: 200, y: 200 },
+            start: { x: 220, y: 200 },
+            end: { x: 200, y: 220 },
+            clockwise: true,
+            largeArc: false,
+            color: '#111111'
+          }
+        ]}
+        activeTool="select"
+        activeColor="#111111"
+        activeStrokeWidth={2}
+        zoom={1}
+        onZoomChange={vi.fn()}
+        onAddPrimitive={vi.fn()}
+        onUpdatePrimitive={onUpdatePrimitive}
+        splitSelectionPrimitiveId={null}
+        onSplitLine={vi.fn()}
+        onSplitCircle={vi.fn()}
+        onErasePrimitive={vi.fn()}
+        onErasePrimitives={vi.fn()}
+        onSelectionChange={onSelectionChange}
+      />
+    );
+
+    const canvas = container.querySelector('svg');
+    expect(canvas).not.toBeNull();
+    if (!canvas) {
+      return;
+    }
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 700, 700));
+
+    fireEvent.pointerDown(canvas, {
+      clientX: 570,
+      clientY: 550,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+    await waitFor(() => expect(onSelectionChange).toHaveBeenLastCalledWith(['arc-1']));
+
+    fireEvent.pointerDown(canvas, {
+      clientX: 570,
+      clientY: 550,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+    fireEvent.pointerMove(canvas, {
+      clientX: 590,
+      clientY: 545,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+    fireEvent.pointerUp(canvas, {
+      clientX: 590,
+      clientY: 545,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+
+    await waitFor(() => expect(onUpdatePrimitive).toHaveBeenCalledTimes(1));
+    expect(onUpdatePrimitive).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        id: 'arc-1',
+        kind: 'arc'
+      })
+    );
+  });
+
+  it('adds an arc after center/start/end clicks', async () => {
+    if (!window.PointerEvent) {
+      Object.defineProperty(window, 'PointerEvent', {
+        value: MouseEvent,
+        writable: true
+      });
+    }
+
+    const onAddPrimitive = vi.fn();
+    const { container } = render(
+      <EditorCanvas
+        tile={{ shape: 'square', size: 100 }}
+        primitives={[]}
+        activeTool="arc"
+        activeColor="#111111"
+        activeStrokeWidth={2}
+        zoom={1}
+        onZoomChange={vi.fn()}
+        onAddPrimitive={onAddPrimitive}
+        onUpdatePrimitive={vi.fn()}
+        splitSelectionPrimitiveId={null}
+        onSplitLine={vi.fn()}
+        onSplitCircle={vi.fn()}
+        onErasePrimitive={vi.fn()}
+        onErasePrimitives={vi.fn()}
+        onSelectionChange={vi.fn()}
+      />
+    );
+
+    const canvas = container.querySelector('svg');
+    expect(canvas).not.toBeNull();
+    if (!canvas) {
+      return;
+    }
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 700, 700));
+
+    fireEvent.pointerDown(canvas, {
+      clientX: 350,
+      clientY: 350,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+    fireEvent.pointerUp(canvas, {
+      clientX: 350,
+      clientY: 350,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+    fireEvent.pointerDown(canvas, {
+      clientX: 450,
+      clientY: 350,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+    fireEvent.pointerUp(canvas, {
+      clientX: 450,
+      clientY: 350,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+    fireEvent.pointerDown(canvas, {
+      clientX: 350,
+      clientY: 250,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+    fireEvent.pointerUp(canvas, {
+      clientX: 350,
+      clientY: 250,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+
+    await waitFor(() => expect(onAddPrimitive).toHaveBeenCalledTimes(1));
+    expect(onAddPrimitive).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'arc',
+        color: '#111111'
+      })
+    );
+  });
+
+  it('cancels arc draft on Escape without adding a primitive', async () => {
+    if (!window.PointerEvent) {
+      Object.defineProperty(window, 'PointerEvent', {
+        value: MouseEvent,
+        writable: true
+      });
+    }
+
+    const onAddPrimitive = vi.fn();
+    const { container } = render(
+      <EditorCanvas
+        tile={{ shape: 'square', size: 100 }}
+        primitives={[]}
+        activeTool="arc"
+        activeColor="#111111"
+        activeStrokeWidth={2}
+        zoom={1}
+        onZoomChange={vi.fn()}
+        onAddPrimitive={onAddPrimitive}
+        onUpdatePrimitive={vi.fn()}
+        splitSelectionPrimitiveId={null}
+        onSplitLine={vi.fn()}
+        onSplitCircle={vi.fn()}
+        onErasePrimitive={vi.fn()}
+        onErasePrimitives={vi.fn()}
+        onSelectionChange={vi.fn()}
+      />
+    );
+
+    const canvas = container.querySelector('svg');
+    expect(canvas).not.toBeNull();
+    if (!canvas) {
+      return;
+    }
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 700, 700));
+
+    fireEvent.pointerDown(canvas, {
+      clientX: 350,
+      clientY: 350,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+    fireEvent.pointerUp(canvas, {
+      clientX: 350,
+      clientY: 350,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+    fireEvent.pointerDown(canvas, {
+      clientX: 450,
+      clientY: 350,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+    fireEvent.pointerUp(canvas, {
+      clientX: 450,
+      clientY: 350,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    fireEvent.pointerDown(canvas, {
+      clientX: 350,
+      clientY: 250,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+    fireEvent.pointerUp(canvas, {
+      clientX: 350,
+      clientY: 250,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+
+    await waitFor(() => expect(onAddPrimitive).toHaveBeenCalledTimes(0));
   });
 });

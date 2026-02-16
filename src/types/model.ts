@@ -1,6 +1,6 @@
 export type TileShape = 'square' | 'hex-pointy';
 
-export type Tool = 'select' | 'line' | 'circle' | 'erase' | 'pan';
+export type Tool = 'select' | 'line' | 'circle' | 'arc' | 'erase' | 'pan';
 
 export interface Point {
   x: number;
@@ -25,7 +25,19 @@ export interface CirclePrimitive {
   strokeWidth?: number;
 }
 
-export type Primitive = LinePrimitive | CirclePrimitive;
+export interface ArcPrimitive {
+  id: string;
+  kind: 'arc';
+  center: Point;
+  start: Point;
+  end: Point;
+  clockwise: boolean;
+  largeArc: boolean;
+  color: string;
+  strokeWidth?: number;
+}
+
+export type Primitive = LinePrimitive | CirclePrimitive | ArcPrimitive;
 
 export interface TileConfig {
   shape: TileShape;

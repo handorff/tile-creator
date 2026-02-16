@@ -100,4 +100,64 @@ describe('project storage', () => {
     const loaded = deserializeProject(payload);
     expect(loaded.project.activeTool).toBe('select');
   });
+
+  it('round-trips arc primitives and arc active tool', () => {
+    const project: ProjectState = {
+      tile: { shape: 'square', size: 120 },
+      primitives: [
+        {
+          id: 'arc-1',
+          kind: 'arc',
+          center: { x: 0, y: 0 },
+          start: { x: 10, y: 0 },
+          end: { x: 0, y: 10 },
+          clockwise: true,
+          largeArc: false,
+          color: '#111',
+          strokeWidth: 2
+        }
+      ],
+      activeTool: 'arc',
+      activeColor: '#111',
+      activeStrokeWidth: 2,
+      history: {
+        past: [],
+        future: []
+      }
+    };
+
+    const loaded = deserializeProject(serializeProject(project, { columns: 2, rows: 2 }));
+    expect(loaded.project).toEqual(project);
+  });
+
+  it('rejects malformed arc payloads', () => {
+    const payload = JSON.stringify({
+      version: 1,
+      project: {
+        tile: { shape: 'square', size: 120 },
+        primitives: [
+          {
+            id: 'arc-1',
+            kind: 'arc',
+            center: { x: 0, y: 0 },
+            start: { x: 10, y: 0 },
+            end: { x: 0, y: 10 },
+            clockwise: true,
+            color: '#111'
+          }
+        ],
+        activeTool: 'line',
+        activeColor: '#111',
+        history: {
+          past: []
+        }
+      },
+      pattern: {
+        columns: 4,
+        rows: 3
+      }
+    });
+
+    expect(() => deserializeProject(payload)).toThrow('Project state is invalid.');
+  });
 });

@@ -10,6 +10,7 @@ export const TOOL_SHORTCUTS: ReadonlyArray<ToolShortcut> = [
   { tool: 'select', key: 'v', label: 'Select' },
   { tool: 'line', key: 'l', label: 'Line' },
   { tool: 'circle', key: 'c', label: 'Circle' },
+  { tool: 'arc', key: 'a', label: 'Arc' },
   { tool: 'pan', key: 'h', label: 'Pan' },
   { tool: 'erase', key: 'e', label: 'Erase' }
 ];
@@ -21,6 +22,7 @@ export const TOOL_SHORTCUT_BY_KEY: Readonly<Record<string, Tool>> = Object.fromE
 export const SELECTION_SHORTCUTS = {
   duplicate: 'd',
   split: 'x',
+  flipArc: 'f',
   rotateCcw: 'q',
   rotateCw: 'r'
 } as const;

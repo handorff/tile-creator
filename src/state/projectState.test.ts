@@ -410,6 +410,75 @@ describe('project reducer', () => {
     expect(split.primitives[0]).toMatchObject({ id: 'line-1' });
   });
 
+  it('splits a circle into complementary arcs and supports undo', () => {
+    const withCircle = projectReducer(initialProjectState, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'circle-1',
+        kind: 'circle',
+        center: { x: 0, y: 0 },
+        radius: 10,
+        color: '#111'
+      }
+    });
+
+    const split = projectReducer(withCircle, {
+      type: 'split-circle',
+      id: 'circle-1',
+      firstPoint: { x: 10, y: 0 },
+      secondPoint: { x: 0, y: 10 },
+      firstArcId: 'arc-1',
+      secondArcId: 'arc-2'
+    });
+
+    expect(split.primitives).toHaveLength(2);
+    expect(split.primitives[0]).toMatchObject({
+      id: 'arc-1',
+      kind: 'arc',
+      center: { x: 0, y: 0 },
+      start: { x: 10, y: 0 },
+      end: { x: 0, y: 10 },
+      largeArc: false
+    });
+    expect(split.primitives[1]).toMatchObject({
+      id: 'arc-2',
+      kind: 'arc',
+      center: { x: 0, y: 0 },
+      start: { x: 10, y: 0 },
+      end: { x: 0, y: 10 },
+      largeArc: true
+    });
+
+    const undone = projectReducer(split, { type: 'undo' });
+    expect(undone.primitives).toHaveLength(1);
+    expect(undone.primitives[0]).toMatchObject({ id: 'circle-1', kind: 'circle' });
+  });
+
+  it('does not split circle when split points are identical', () => {
+    const withCircle = projectReducer(initialProjectState, {
+      type: 'add-primitive',
+      primitive: {
+        id: 'circle-1',
+        kind: 'circle',
+        center: { x: 0, y: 0 },
+        radius: 10,
+        color: '#111'
+      }
+    });
+
+    const split = projectReducer(withCircle, {
+      type: 'split-circle',
+      id: 'circle-1',
+      firstPoint: { x: 10, y: 0 },
+      secondPoint: { x: 10, y: 0 },
+      firstArcId: 'arc-1',
+      secondArcId: 'arc-2'
+    });
+
+    expect(split.primitives).toHaveLength(1);
+    expect(split.primitives[0]).toMatchObject({ id: 'circle-1', kind: 'circle' });
+  });
+
   it('recolors all selected primitives in one history step', () => {
     const withFirst = projectReducer(initialProjectState, {
       type: 'add-primitive',

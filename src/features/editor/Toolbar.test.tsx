@@ -17,6 +17,7 @@ function buildToolbarProps() {
     ],
     selectedCount: 1,
     canSplitSelection: true,
+    canFlipArcSelection: false,
     splitSelectionArmed: false,
     onShapeChange: vi.fn(),
     onToolChange: vi.fn(),
@@ -27,6 +28,7 @@ function buildToolbarProps() {
     onOnlyVisibleColor: vi.fn(),
     onDuplicateSelection: vi.fn(),
     onSplitSelection: vi.fn(),
+    onFlipArcSelection: vi.fn(),
     onRotateSelectionCcw: vi.fn(),
     onRotateSelectionCw: vi.fn(),
     onUndo: vi.fn(),
@@ -220,13 +222,21 @@ describe('Toolbar', () => {
       'title',
       'Line tool (L)'
     );
+    expect(within(view.container).getByRole('button', { name: 'Arc' })).toHaveAttribute(
+      'title',
+      'Arc tool (A)'
+    );
     expect(within(view.container).getByRole('button', { name: 'Duplicate' })).toHaveAttribute(
       'title',
       'Duplicate selected primitives (D)'
     );
     expect(within(view.container).getByRole('button', { name: 'Split' })).toHaveAttribute(
       'title',
-      'Split selected line (X)'
+      'Split selected line/circle (X)'
+    );
+    expect(within(view.container).getByRole('button', { name: 'Flip Arc' })).toHaveAttribute(
+      'title',
+      'Flip selected arcs (F)'
     );
   });
 
@@ -239,5 +249,23 @@ describe('Toolbar', () => {
 
     fireEvent.click(splitButton);
     expect(props.onSplitSelection).not.toHaveBeenCalled();
+  });
+
+  it('enables flip arc button only when arc selection is available', () => {
+    const props = buildToolbarProps();
+    const disabledView = render(<Toolbar {...props} canFlipArcSelection={false} />);
+    const flipDisabled = within(disabledView.container).getByRole('button', { name: 'Flip Arc' });
+    expect(flipDisabled).toBeDisabled();
+    fireEvent.click(flipDisabled);
+    expect(props.onFlipArcSelection).not.toHaveBeenCalled();
+
+    disabledView.unmount();
+
+    const enabledProps = buildToolbarProps();
+    const enabledView = render(<Toolbar {...enabledProps} canFlipArcSelection />);
+    const flipEnabled = within(enabledView.container).getByRole('button', { name: 'Flip Arc' });
+    expect(flipEnabled).not.toBeDisabled();
+    fireEvent.click(flipEnabled);
+    expect(enabledProps.onFlipArcSelection).toHaveBeenCalledTimes(1);
   });
 });

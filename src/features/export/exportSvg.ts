@@ -1,4 +1,5 @@
 import {
+  arcPathD,
   getTilePolygon,
   periodicNeighborOffsets,
   tileBasisVectors,
@@ -16,6 +17,10 @@ function primitiveSvg(primitive: Primitive): string {
   const strokeWidth = getPrimitiveStrokeWidth(primitive);
   if (primitive.kind === 'line') {
     return `<line x1="${primitive.a.x}" y1="${primitive.a.y}" x2="${primitive.b.x}" y2="${primitive.b.y}" stroke="${primitive.color}" stroke-width="${strokeWidth}" fill="none" />`;
+  }
+
+  if (primitive.kind === 'arc') {
+    return `<path d="${arcPathD(primitive)}" stroke="${primitive.color}" stroke-width="${strokeWidth}" fill="none" />`;
   }
 
   return `<circle cx="${primitive.center.x}" cy="${primitive.center.y}" r="${primitive.radius}" stroke="${primitive.color}" stroke-width="${strokeWidth}" fill="none" />`;

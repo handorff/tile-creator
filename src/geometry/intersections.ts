@@ -1,5 +1,6 @@
-import type { CirclePrimitive, LinePrimitive, Point, Primitive } from '../types/model';
+import type { ArcPrimitive, CirclePrimitive, LinePrimitive, Point, Primitive } from '../types/model';
 import { EPSILON, add, cross, distance, dot, pointKey, scale, subtract } from '../utils/math';
+import { arcRadius, isPointOnArcSweep, normalizeArc } from './arc';
 
 function lineLineIntersectionSegment(a: LinePrimitive, b: LinePrimitive): Point[] {
   const p = a.a;
@@ -101,6 +102,23 @@ function circleCircleIntersections(a: CirclePrimitive, b: CirclePrimitive): Poin
   ];
 }
 
+function circleFromArc(arc: ArcPrimitive): CirclePrimitive {
+  const normalized = normalizeArc(arc);
+  return {
+    id: normalized.id,
+    kind: 'circle',
+    center: normalized.center,
+    radius: arcRadius(normalized),
+    color: normalized.color,
+    strokeWidth: normalized.strokeWidth
+  };
+}
+
+function filterPointsOnArc(points: Point[], arc: ArcPrimitive): Point[] {
+  const normalized = normalizeArc(arc);
+  return points.filter((point) => isPointOnArcSweep(point, normalized, 1e-4));
+}
+
 export function intersections(primitives: Primitive[]): Point[] {
   const results: Point[] = [];
 
@@ -115,8 +133,23 @@ export function intersections(primitives: Primitive[]): Point[] {
         results.push(...lineCircleIntersections(a, b));
       } else if (a.kind === 'circle' && b.kind === 'line') {
         results.push(...lineCircleIntersections(b, a));
-      } else {
-        results.push(...circleCircleIntersections(a as CirclePrimitive, b as CirclePrimitive));
+      } else if (a.kind === 'line' && b.kind === 'arc') {
+        results.push(...filterPointsOnArc(lineCircleIntersections(a, circleFromArc(b)), b));
+      } else if (a.kind === 'arc' && b.kind === 'line') {
+        results.push(...filterPointsOnArc(lineCircleIntersections(b, circleFromArc(a)), a));
+      } else if (a.kind === 'circle' && b.kind === 'circle') {
+        results.push(...circleCircleIntersections(a, b));
+      } else if (a.kind === 'circle' && b.kind === 'arc') {
+        results.push(...filterPointsOnArc(circleCircleIntersections(a, circleFromArc(b)), b));
+      } else if (a.kind === 'arc' && b.kind === 'circle') {
+        results.push(...filterPointsOnArc(circleCircleIntersections(circleFromArc(a), b), a));
+      } else if (a.kind === 'arc' && b.kind === 'arc') {
+        const candidates = circleCircleIntersections(circleFromArc(a), circleFromArc(b));
+        results.push(
+          ...candidates.filter(
+            (point) => isPointOnArcSweep(point, normalizeArc(a), 1e-4) && isPointOnArcSweep(point, normalizeArc(b), 1e-4)
+          )
+        );
       }
     }
   }
