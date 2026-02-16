@@ -5,6 +5,8 @@ import { SELECTION_SHORTCUTS, TOOL_SHORTCUT_BY_KEY } from '../features/editor/sh
 import { Toolbar } from '../features/editor/Toolbar';
 import { buildAnimatedGif } from '../features/export/exportGif';
 import { buildTiledSvg } from '../features/export/exportSvg';
+import { PRESET_GALLERY, type PresetDefinition } from '../features/presets/presetGallery';
+import { PresetTilePreview } from '../features/presets/PresetTilePreview';
 import {
   deserializeProject,
   loadAutosave,
@@ -24,6 +26,11 @@ import { downloadBlob, downloadText } from '../utils/download';
 import { createId } from '../utils/ids';
 
 interface InitialState {
+  project: ProjectState;
+  pattern: PatternSize;
+}
+
+interface LoadedPreset {
   project: ProjectState;
   pattern: PatternSize;
 }
@@ -112,6 +119,11 @@ export function App(): JSX.Element {
   const [splitSelectionLineId, setSplitSelectionLineId] = useState<string | null>(null);
   const [message, setMessage] = useState<string>('');
   const [isExportingGif, setIsExportingGif] = useState<boolean>(false);
+  const [loadingPresetId, setLoadingPresetId] = useState<string | null>(null);
+  const [isPresetGalleryOpen, setIsPresetGalleryOpen] = useState<boolean>(false);
+  const [loadingPresetPreviewIds, setLoadingPresetPreviewIds] = useState<string[]>([]);
+  const [presetPreviewErrors, setPresetPreviewErrors] = useState<Record<string, string>>({});
+  const [presetProjects, setPresetProjects] = useState<Record<string, LoadedPreset>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const centerSplitRef = useRef<HTMLDivElement | null>(null);
   const [editorPane, setEditorPane] = useState<number>(0.55);
@@ -122,6 +134,16 @@ export function App(): JSX.Element {
     [project.primitives]
   );
   const hiddenColorSet = useMemo(() => new Set(hiddenColors), [hiddenColors]);
+  const fetchPresetProject = useCallback(async (preset: PresetDefinition): Promise<LoadedPreset> => {
+    const url = `${import.meta.env.BASE_URL}${preset.filePath}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Could not load ${preset.name}.`);
+    }
+
+    const text = await response.text();
+    return deserializeProject(text);
+  }, []);
 
   useEffect(() => {
     saveAutosave(project, pattern);
@@ -132,6 +154,61 @@ export function App(): JSX.Element {
       setResizingPane(false);
     }
   }, [showPatternPreview]);
+
+  useEffect(() => {
+    if (!isPresetGalleryOpen) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        setIsPresetGalleryOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isPresetGalleryOpen]);
+
+  useEffect(() => {
+    if (!isPresetGalleryOpen) {
+      return;
+    }
+
+    for (const preset of PRESET_GALLERY) {
+      if (
+        presetProjects[preset.id] ||
+        loadingPresetPreviewIds.includes(preset.id) ||
+        presetPreviewErrors[preset.id]
+      ) {
+        continue;
+      }
+
+      setLoadingPresetPreviewIds((current) =>
+        current.includes(preset.id) ? current : [...current, preset.id]
+      );
+
+      void fetchPresetProject(preset)
+        .then((loaded) => {
+          setPresetProjects((current) => ({ ...current, [preset.id]: loaded }));
+        })
+        .catch((error) => {
+          setPresetPreviewErrors((current) => ({
+            ...current,
+            [preset.id]: error instanceof Error ? error.message : `Could not load ${preset.name}.`
+          }));
+        })
+        .finally(() => {
+          setLoadingPresetPreviewIds((current) => current.filter((id) => id !== preset.id));
+        });
+    }
+  }, [
+    fetchPresetProject,
+    isPresetGalleryOpen,
+    loadingPresetPreviewIds,
+    presetPreviewErrors,
+    presetProjects
+  ]);
 
   useEffect(() => {
     setSelectedPrimitiveIds((current) =>
@@ -496,6 +573,31 @@ export function App(): JSX.Element {
     }
   };
 
+  const loadPreset = async (preset: PresetDefinition): Promise<void> => {
+    if (loadingPresetId) {
+      return;
+    }
+
+    setLoadingPresetId(preset.id);
+    setMessage(`Loading ${preset.name}...`);
+
+    try {
+      const loaded = presetProjects[preset.id] ?? (await fetchPresetProject(preset));
+      dispatch({ type: 'hydrate', state: loaded.project });
+      setPattern(loaded.pattern);
+      setPresetProjects((current) => ({ ...current, [preset.id]: loaded }));
+      setHiddenColors([]);
+      setSelectedPrimitiveIds([]);
+      setSplitSelectionLineId(null);
+      setIsPresetGalleryOpen(false);
+      setMessage(`Loaded ${preset.name}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : `Could not load ${preset.name}.`);
+    } finally {
+      setLoadingPresetId(null);
+    }
+  };
+
   const updateEditorPane = (clientX: number): void => {
     if (!showPatternPreview) {
       return;
@@ -626,6 +728,13 @@ export function App(): JSX.Element {
         </section>
 
         <aside className="right-panel">
+          <section className="right-section">
+            <h2>Example Presets</h2>
+            <button type="button" onClick={() => setIsPresetGalleryOpen(true)}>
+              Open Gallery
+            </button>
+          </section>
+
           <section className="right-section pattern-controls">
             <h2>Pattern Size</h2>
             <div className="pattern-grid">
@@ -708,6 +817,63 @@ export function App(): JSX.Element {
           {message ? <p className="status-message">{message}</p> : null}
         </aside>
       </section>
+
+      {isPresetGalleryOpen ? (
+        <div
+          className="gallery-modal-backdrop"
+          role="presentation"
+          onClick={() => setIsPresetGalleryOpen(false)}
+        >
+          <section
+            className="gallery-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Preset Gallery"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="gallery-modal-header">
+              <h2>Preset Gallery</h2>
+              <button type="button" onClick={() => setIsPresetGalleryOpen(false)}>
+                Close
+              </button>
+            </header>
+
+            <div className="gallery-modal-content">
+              <div className="preset-list">
+                {PRESET_GALLERY.map((preset) => {
+                  const previewError = presetPreviewErrors[preset.id];
+                  const preview = presetProjects[preset.id];
+
+                  return (
+                    <article key={preset.id} className="preset-card">
+                      <h3>{preset.name}</h3>
+                      <p>{preset.description}</p>
+                      {preview ? (
+                        <PresetTilePreview
+                          id={preset.id}
+                          tile={preview.project.tile}
+                          primitives={preview.project.primitives}
+                        />
+                      ) : (
+                        <div className="preset-thumbnail-placeholder">
+                          {previewError ? 'Preview unavailable.' : 'Loading preview...'}
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void loadPreset(preset)}
+                        disabled={loadingPresetId !== null}
+                      >
+                        {loadingPresetId === preset.id ? 'Loading...' : 'Open Preset'}
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

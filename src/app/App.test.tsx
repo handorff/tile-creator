@@ -54,6 +54,12 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'Export Animated GIF' })).toBeInTheDocument();
   });
 
+  it('renders button to open the preset gallery modal', () => {
+    render(<App />);
+
+    expect(screen.getByRole('button', { name: 'Open Gallery' })).toBeInTheDocument();
+  });
+
   it('disables gif export button while exporting and shows success message', async () => {
     let resolveExport: ((blob: Blob) => void) | undefined;
     buildAnimatedGifMock.mockReturnValue(
