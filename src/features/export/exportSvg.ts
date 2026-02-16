@@ -53,6 +53,13 @@ interface ArcRenderFragment extends BaseRenderFragment {
 
 type RenderFragment = LineRenderFragment | CircleRenderFragment | ArcRenderFragment;
 
+interface LinePathRenderFragment extends BaseRenderFragment {
+  kind: 'line-path';
+  points: Point[];
+}
+
+type OutputRenderFragment = CircleRenderFragment | ArcRenderFragment | LinePathRenderFragment;
+
 interface PolygonEdge {
   a: Point;
   b: Point;
@@ -65,6 +72,18 @@ interface ArcSweep {
   startAngle: number;
   clockwise: boolean;
   delta: number;
+}
+
+interface LineGraphNode {
+  key: string;
+  point: Point;
+  edgeIds: number[];
+}
+
+interface LineGraphEdge {
+  a: string;
+  b: string;
+  used: boolean;
 }
 
 function polygonPoints(points: { x: number; y: number }[]): string {
@@ -480,6 +499,18 @@ function quantizedPoint(point: Point): string {
   return `${quantize(point.x)},${quantize(point.y)}`;
 }
 
+function pointFromQuantizedKey(key: string): Point {
+  const [x, y] = key.split(',');
+  return {
+    x: Number(x),
+    y: Number(y)
+  };
+}
+
+function styleBucketKey(color: string, strokeWidth: number): string {
+  return `${color}|${quantize(strokeWidth)}`;
+}
+
 function dedupeKey(fragment: RenderFragment): string {
   const styleKey = `${fragment.color}|${quantize(fragment.strokeWidth)}`;
 
@@ -519,15 +550,188 @@ function dedupeFragments(fragments: RenderFragment[]): RenderFragment[] {
   return [...unique.values()];
 }
 
+function hasUnusedEdge(node: LineGraphNode, edges: LineGraphEdge[]): boolean {
+  return node.edgeIds.some((edgeId) => !edges[edgeId].used);
+}
+
+function unusedDegree(node: LineGraphNode, edges: LineGraphEdge[]): number {
+  return node.edgeIds.reduce((count, edgeId) => (edges[edgeId].used ? count : count + 1), 0);
+}
+
+function compressRepeatedPoints(points: Point[]): Point[] {
+  if (points.length <= 1) {
+    return points;
+  }
+
+  const compressed = [points[0]];
+  for (let i = 1; i < points.length; i += 1) {
+    const previous = compressed[compressed.length - 1];
+    const next = points[i];
+    if (Math.hypot(next.x - previous.x, next.y - previous.y) > CLIP_EPSILON) {
+      compressed.push(next);
+    }
+  }
+
+  return compressed;
+}
+
+function consumeTrail(
+  startNodeKey: string,
+  nodes: Map<string, LineGraphNode>,
+  edges: LineGraphEdge[]
+): string[] {
+  const trail = [startNodeKey];
+  let currentNodeKey = startNodeKey;
+
+  while (true) {
+    const currentNode = nodes.get(currentNodeKey);
+    if (!currentNode) {
+      break;
+    }
+
+    const nextEdgeId = currentNode.edgeIds.find((edgeId) => !edges[edgeId].used);
+    if (typeof nextEdgeId !== 'number') {
+      break;
+    }
+
+    const edge = edges[nextEdgeId];
+    edge.used = true;
+    currentNodeKey = edge.a === currentNodeKey ? edge.b : edge.a;
+    trail.push(currentNodeKey);
+  }
+
+  return trail;
+}
+
+function linePathD(points: Point[]): string {
+  const [first, ...rest] = points;
+  return `M ${first.x} ${first.y} ${rest.map((point) => `L ${point.x} ${point.y}`).join(' ')}`;
+}
+
+function buildJoinedLinePaths(lineFragments: LineRenderFragment[]): LinePathRenderFragment[] {
+  if (lineFragments.length === 0) {
+    return [];
+  }
+
+  const color = lineFragments[0].color;
+  const strokeWidth = lineFragments[0].strokeWidth;
+  const nodes = new Map<string, LineGraphNode>();
+  const edges: LineGraphEdge[] = [];
+
+  const ensureNode = (key: string): LineGraphNode => {
+    const existing = nodes.get(key);
+    if (existing) {
+      return existing;
+    }
+
+    const created: LineGraphNode = {
+      key,
+      point: pointFromQuantizedKey(key),
+      edgeIds: []
+    };
+    nodes.set(key, created);
+    return created;
+  };
+
+  for (const line of lineFragments) {
+    if (Math.hypot(line.b.x - line.a.x, line.b.y - line.a.y) <= CLIP_EPSILON) {
+      continue;
+    }
+
+    const aKey = quantizedPoint(line.a);
+    const bKey = quantizedPoint(line.b);
+    if (aKey === bKey) {
+      continue;
+    }
+
+    const edgeId = edges.length;
+    edges.push({
+      a: aKey,
+      b: bKey,
+      used: false
+    });
+    ensureNode(aKey).edgeIds.push(edgeId);
+    ensureNode(bKey).edgeIds.push(edgeId);
+  }
+
+  if (edges.length === 0) {
+    return [];
+  }
+
+  const joinedPaths: LinePathRenderFragment[] = [];
+
+  while (true) {
+    const nodeList = [...nodes.values()];
+    const oddStart = nodeList.find(
+      (node) => hasUnusedEdge(node, edges) && unusedDegree(node, edges) % 2 === 1
+    );
+    const fallbackStart = nodeList.find((node) => hasUnusedEdge(node, edges));
+    const start = oddStart ?? fallbackStart;
+    if (!start) {
+      break;
+    }
+
+    const walk = consumeTrail(start.key, nodes, edges);
+    if (walk.length < 2) {
+      continue;
+    }
+
+    const points = compressRepeatedPoints(
+      walk
+        .map((nodeKey) => nodes.get(nodeKey)?.point)
+        .filter((point): point is Point => point !== undefined)
+    );
+    if (points.length < 2) {
+      continue;
+    }
+
+    joinedPaths.push({
+      kind: 'line-path',
+      color,
+      strokeWidth,
+      points
+    });
+  }
+
+  return joinedPaths;
+}
+
+function joinLineFragmentsForPlotter(fragments: RenderFragment[]): OutputRenderFragment[] {
+  const passthrough: OutputRenderFragment[] = [];
+  const lineBuckets = new Map<string, LineRenderFragment[]>();
+
+  for (const fragment of fragments) {
+    if (fragment.kind !== 'line') {
+      passthrough.push(fragment);
+      continue;
+    }
+
+    const key = styleBucketKey(fragment.color, fragment.strokeWidth);
+    const bucket = lineBuckets.get(key);
+    if (bucket) {
+      bucket.push(fragment);
+    } else {
+      lineBuckets.set(key, [fragment]);
+    }
+  }
+
+  const joined: LinePathRenderFragment[] = [];
+  for (const bucket of lineBuckets.values()) {
+    joined.push(...buildJoinedLinePaths(bucket));
+  }
+
+  return [...joined, ...passthrough];
+}
+
 function arcFragmentPathD(fragment: ArcRenderFragment): string {
   const largeArc = fragment.largeArc ? 1 : 0;
   const sweep = fragment.clockwise ? 1 : 0;
   return `M ${fragment.start.x} ${fragment.start.y} A ${fragment.radius} ${fragment.radius} 0 ${largeArc} ${sweep} ${fragment.end.x} ${fragment.end.y}`;
 }
 
-function fragmentSvg(fragment: RenderFragment): string {
-  if (fragment.kind === 'line') {
-    return `<line x1="${fragment.a.x}" y1="${fragment.a.y}" x2="${fragment.b.x}" y2="${fragment.b.y}" stroke="${fragment.color}" stroke-width="${fragment.strokeWidth}" fill="none" />`;
+function fragmentSvg(fragment: OutputRenderFragment): string {
+  if (fragment.kind === 'line-path') {
+    return `<path d="${linePathD(fragment.points)}" stroke="${fragment.color}" stroke-width="${fragment.strokeWidth}" fill="none" />`;
   }
 
   if (fragment.kind === 'circle') {
@@ -664,6 +868,7 @@ export function buildTiledSvg(projectState: ProjectState, options: ExportOptions
   }
 
   const dedupedFragments = dedupeFragments(renderedFragments);
+  const optimizedFragments = joinLineFragmentsForPlotter(dedupedFragments);
 
   const background = options.background
     ? `<rect x="${bounds.minX}" y="${bounds.minY}" width="${bounds.width}" height="${bounds.height}" fill="${options.background}" />`
@@ -672,7 +877,7 @@ export function buildTiledSvg(projectState: ProjectState, options: ExportOptions
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="${bounds.minX} ${bounds.minY} ${bounds.width} ${bounds.height}">
 ${background}
-${dedupedFragments.map((fragment) => fragmentSvg(fragment)).join('')}
+${optimizedFragments.map((fragment) => fragmentSvg(fragment)).join('')}
 </svg>`;
 }
 

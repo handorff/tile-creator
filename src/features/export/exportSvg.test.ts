@@ -6,6 +6,10 @@ function countOccurrences(text: string, pattern: RegExp): number {
   return (text.match(pattern) ?? []).length;
 }
 
+function countLinearPathElements(svg: string): number {
+  return countOccurrences(svg, /<path d="[^"]* L [^"]*"[^>]*\/>/g);
+}
+
 describe('buildTiledSvg', () => {
   it('creates tiled svg document without clip paths', () => {
     const project = {
@@ -28,18 +32,26 @@ describe('buildTiledSvg', () => {
     expect(svg).not.toContain('<clipPath');
     expect(svg).not.toContain('clip-path=');
     expect(svg).not.toContain('<defs>');
-    expect(svg).toContain('<line');
+    expect(svg).not.toContain('<line ');
+    expect(svg).toContain('<path');
   });
 
-  it('keeps seamless wrapped line continuity for a single-tile pattern', () => {
+  it('joins connected line fragments into a single stroke path', () => {
     const project = {
       ...initialProjectState,
       primitives: [
         {
-          id: 'line-wrap',
+          id: 'line-1',
           kind: 'line' as const,
-          a: { x: 100, y: 0 },
-          b: { x: 160, y: 0 },
+          a: { x: -80, y: 0 },
+          b: { x: 0, y: 0 },
+          color: '#111'
+        },
+        {
+          id: 'line-2',
+          kind: 'line' as const,
+          a: { x: 0, y: 0 },
+          b: { x: 80, y: 0 },
           color: '#111'
         }
       ]
@@ -47,8 +59,77 @@ describe('buildTiledSvg', () => {
 
     const svg = buildTiledSvg(project, { pattern: { columns: 1, rows: 1 } });
 
-    expect(countOccurrences(svg, /<line /g)).toBe(2);
+    expect(countOccurrences(svg, /<line /g)).toBe(0);
+    expect(countLinearPathElements(svg)).toBe(1);
     expect(svg).not.toContain('<clipPath');
+  });
+
+  it('creates minimal trail count for branching line graph', () => {
+    const project = {
+      ...initialProjectState,
+      primitives: [
+        {
+          id: 'line-right',
+          kind: 'line' as const,
+          a: { x: 0, y: 0 },
+          b: { x: 40, y: 0 },
+          color: '#111'
+        },
+        {
+          id: 'line-left',
+          kind: 'line' as const,
+          a: { x: 0, y: 0 },
+          b: { x: -40, y: 0 },
+          color: '#111'
+        },
+        {
+          id: 'line-up',
+          kind: 'line' as const,
+          a: { x: 0, y: 0 },
+          b: { x: 0, y: -40 },
+          color: '#111'
+        },
+        {
+          id: 'line-down',
+          kind: 'line' as const,
+          a: { x: 0, y: 0 },
+          b: { x: 0, y: 40 },
+          color: '#111'
+        }
+      ]
+    };
+
+    const svg = buildTiledSvg(project, { pattern: { columns: 1, rows: 1 } });
+
+    expect(countLinearPathElements(svg)).toBe(2);
+  });
+
+  it('keeps line joining isolated by stroke style', () => {
+    const project = {
+      ...initialProjectState,
+      primitives: [
+        {
+          id: 'line-dark',
+          kind: 'line' as const,
+          a: { x: -40, y: 0 },
+          b: { x: 0, y: 0 },
+          color: '#111'
+        },
+        {
+          id: 'line-blue',
+          kind: 'line' as const,
+          a: { x: 0, y: 0 },
+          b: { x: 40, y: 0 },
+          color: '#1d4ed8'
+        }
+      ]
+    };
+
+    const svg = buildTiledSvg(project, { pattern: { columns: 1, rows: 1 } });
+
+    expect(countLinearPathElements(svg)).toBe(2);
+    expect(countOccurrences(svg, /stroke="#111"/g)).toBe(1);
+    expect(countOccurrences(svg, /stroke="#1d4ed8"/g)).toBe(1);
   });
 
   it('deduplicates shared boundary segments across cells', () => {
@@ -67,7 +148,7 @@ describe('buildTiledSvg', () => {
 
     const svg = buildTiledSvg(project, { pattern: { columns: 2, rows: 1 } });
 
-    expect(countOccurrences(svg, /<line /g)).toBe(3);
+    expect(countLinearPathElements(svg)).toBe(3);
   });
 
   it('exports circles directly when fully visible in a tile', () => {
