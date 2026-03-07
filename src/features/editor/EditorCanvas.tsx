@@ -1212,13 +1212,26 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
         ) : null}
 
         {marqueeDrag ? (
-          <rect
-            className="selection-marquee"
-            x={Math.min(marqueeDrag.origin.x, marqueeDrag.current.x)}
-            y={Math.min(marqueeDrag.origin.y, marqueeDrag.current.y)}
-            width={Math.abs(marqueeDrag.current.x - marqueeDrag.origin.x)}
-            height={Math.abs(marqueeDrag.current.y - marqueeDrag.origin.y)}
-          />
+          (() => {
+            const x = Math.min(marqueeDrag.origin.x, marqueeDrag.current.x);
+            const y = Math.min(marqueeDrag.origin.y, marqueeDrag.current.y);
+            const width = Math.abs(marqueeDrag.current.x - marqueeDrag.origin.x);
+            const height = Math.abs(marqueeDrag.current.y - marqueeDrag.origin.y);
+
+            if (![x, y, width, height].every(Number.isFinite)) {
+              return null;
+            }
+
+            return (
+              <rect
+                className="selection-marquee"
+                x={x}
+                y={y}
+                width={width}
+                height={height}
+              />
+            );
+          })()
         ) : null}
 
         <path d={tilePath} className="tile-outline" />

@@ -18,6 +18,7 @@ export {
 } from './snapping';
 export { replicatePattern, translatePrimitive } from './transforms';
 export { hitTestPrimitive } from './hitTest';
+export { buildSymmetricOffsets, isOffsettablePrimitive } from './offset';
 export {
   arcRadius,
   normalizeArc,

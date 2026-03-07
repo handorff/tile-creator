@@ -23,6 +23,7 @@ export const SELECTION_SHORTCUTS = {
   duplicate: 'd',
   split: 'x',
   flipArc: 'f',
+  offset: 'o',
   rotateCcw: 'q',
   rotateCw: 'r'
 } as const;

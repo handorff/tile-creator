@@ -18,7 +18,10 @@ function buildToolbarProps() {
     selectedCount: 1,
     canSplitSelection: true,
     canFlipArcSelection: false,
+    canOffsetSelection: true,
     splitSelectionArmed: false,
+    offsetDistance: null,
+    showOffsetDistanceEditor: false,
     onShapeChange: vi.fn(),
     onToolChange: vi.fn(),
     onColorChange: vi.fn(),
@@ -29,6 +32,10 @@ function buildToolbarProps() {
     onDuplicateSelection: vi.fn(),
     onSplitSelection: vi.fn(),
     onFlipArcSelection: vi.fn(),
+    onOffsetSelection: vi.fn(),
+    onOffsetDistanceDraftChange: vi.fn(),
+    onCommitOffsetDistance: vi.fn(),
+    onCancelOffsetDistance: vi.fn(),
     onRotateSelectionCcw: vi.fn(),
     onRotateSelectionCw: vi.fn(),
     onUndo: vi.fn(),
@@ -238,6 +245,10 @@ describe('Toolbar', () => {
       'title',
       'Flip selected arcs (F)'
     );
+    expect(within(view.container).getByRole('button', { name: 'Offset' })).toHaveAttribute(
+      'title',
+      'Offset selected primitives (O)'
+    );
   });
 
   it('disables split when selection cannot be split', () => {
@@ -267,5 +278,26 @@ describe('Toolbar', () => {
     expect(flipEnabled).not.toBeDisabled();
     fireEvent.click(flipEnabled);
     expect(enabledProps.onFlipArcSelection).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders and controls the offset distance editor when active', () => {
+    const props = buildToolbarProps();
+    const view = render(
+      <Toolbar
+        {...props}
+        offsetDistance={12}
+        showOffsetDistanceEditor
+      />
+    );
+
+    const input = within(view.container).getByTestId('offset-distance');
+    fireEvent.change(input, { target: { value: '6' } });
+    expect(props.onOffsetDistanceDraftChange).toHaveBeenCalledWith(6);
+
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(props.onCommitOffsetDistance).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(props.onCancelOffsetDistance).toHaveBeenCalledTimes(1);
   });
 });
