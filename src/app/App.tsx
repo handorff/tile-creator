@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent as ReactPointerEvent } from 'react';
+import { buildSymmetricOffsets, isOffsettablePrimitive } from '../geometry';
 import { EditorCanvas } from '../features/editor/EditorCanvas';
 import { buildHistoryTimeline } from '../features/editor/historyTimeline';
 import { SELECTION_SHORTCUTS, TOOL_SHORTCUT_BY_KEY } from '../features/editor/shortcuts';
@@ -36,6 +37,13 @@ interface LoadedPreset {
   pattern: PatternSize;
 }
 
+interface OffsetSession {
+  sourceSnapshot: Primitive[];
+  generatedIds: string[];
+  distance: number;
+  draftDistance: number;
+}
+
 const MIN_EDITOR_ZOOM = 0.5;
 const MAX_EDITOR_ZOOM = 10;
 const MIN_EDITOR_PANE = 0.3;
@@ -60,6 +68,22 @@ function clampEditorPane(value: number): number {
     return 0.55;
   }
   return Math.min(MAX_EDITOR_PANE, Math.max(MIN_EDITOR_PANE, value));
+}
+
+function defaultOffsetDistanceForTile(size: number): number {
+  if (Number.isNaN(size) || size <= 0) {
+    return 12;
+  }
+
+  return Math.max(1, Math.round(size * 0.1));
+}
+
+function normalizeOffsetDistance(value: number, fallback: number): number {
+  if (Number.isNaN(value)) {
+    return fallback;
+  }
+
+  return Math.max(0, value);
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -107,6 +131,49 @@ function rotatePrimitiveAroundOrigin(primitive: Primitive, radians: number): Pri
   };
 }
 
+function samePoint(a: Point, b: Point): boolean {
+  return a.x === b.x && a.y === b.y;
+}
+
+function samePrimitive(a: Primitive, b: Primitive): boolean {
+  if (
+    a.kind !== b.kind ||
+    a.id !== b.id ||
+    a.color !== b.color ||
+    getPrimitiveStrokeWidth(a) !== getPrimitiveStrokeWidth(b)
+  ) {
+    return false;
+  }
+
+  if (a.kind === 'line' && b.kind === 'line') {
+    return samePoint(a.a, b.a) && samePoint(a.b, b.b);
+  }
+
+  if (a.kind === 'circle' && b.kind === 'circle') {
+    return samePoint(a.center, b.center) && a.radius === b.radius;
+  }
+
+  if (a.kind === 'arc' && b.kind === 'arc') {
+    return (
+      samePoint(a.center, b.center) &&
+      samePoint(a.start, b.start) &&
+      samePoint(a.end, b.end) &&
+      a.largeArc === b.largeArc
+    );
+  }
+
+  return false;
+}
+
+function sameIdSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  const ids = new Set(a);
+  return b.every((id) => ids.has(id));
+}
+
 function loadInitialState(): InitialState {
   const autosaved = loadAutosave();
   if (autosaved) {
@@ -127,6 +194,10 @@ export function App(): JSX.Element {
   const [editorZoom, setEditorZoom] = useState<number>(1);
   const [selectedPrimitiveIds, setSelectedPrimitiveIds] = useState<string[]>([]);
   const [splitSelectionPrimitiveId, setSplitSelectionPrimitiveId] = useState<string | null>(null);
+  const [offsetSession, setOffsetSession] = useState<OffsetSession | null>(null);
+  const [lastOffsetDistance, setLastOffsetDistance] = useState<number>(
+    defaultOffsetDistanceForTile(initial.project.tile.size)
+  );
   const [message, setMessage] = useState<string>('');
   const [isExportingGif, setIsExportingGif] = useState<boolean>(false);
   const [loadingPresetId, setLoadingPresetId] = useState<string | null>(null);
@@ -281,6 +352,10 @@ export function App(): JSX.Element {
   }, [project.activeColor, project.activeStrokeWidth, selectedPrimitives]);
   const canSplitSelection = project.activeTool === 'select' && selectedSplitPrimitive !== null;
   const canFlipArcSelection = selectedPrimitives.some((primitive) => primitive.kind === 'arc');
+  const canOffsetSelection =
+    project.activeTool === 'select' &&
+    selectedPrimitives.length > 0 &&
+    selectedPrimitives.every(isOffsettablePrimitive);
   const splitSelectionArmed =
     canSplitSelection &&
     !!selectedSplitPrimitive &&
@@ -304,6 +379,38 @@ export function App(): JSX.Element {
       return current === selectedSplitPrimitive.id ? current : null;
     });
   }, [project.activeTool, selectedSplitPrimitive]);
+
+  useEffect(() => {
+    setOffsetSession((current) => {
+      if (!current) {
+        return null;
+      }
+
+      if (!sameIdSet(selectedPrimitiveIds, current.generatedIds)) {
+        return null;
+      }
+
+      const currentGenerated = current.generatedIds
+        .map((id) => project.primitives.find((primitive) => primitive.id === id) ?? null);
+      if (currentGenerated.some((primitive) => primitive === null)) {
+        return null;
+      }
+
+      const expectedGenerated = buildSymmetricOffsets(current.sourceSnapshot, current.distance, {
+        reuseIds: current.generatedIds,
+        tile: project.tile
+      });
+      if (expectedGenerated.length !== current.generatedIds.length) {
+        return null;
+      }
+
+      return expectedGenerated.every((primitive, index) =>
+        samePrimitive(primitive, currentGenerated[index]!)
+      )
+        ? current
+        : null;
+    });
+  }, [project.primitives, project.tile, selectedPrimitiveIds]);
 
   const addPrimitive = (primitive: Primitive): void => {
     dispatch({ type: 'add-primitive', primitive });
@@ -449,6 +556,109 @@ export function App(): JSX.Element {
     setSelectedPrimitiveIds(duplicates.map((primitive) => primitive.id));
   }, [project.primitives, selectedPrimitiveIds]);
 
+  const offsetSelected = useCallback((): void => {
+    if (!canOffsetSelection) {
+      return;
+    }
+
+    const distanceValue = normalizeOffsetDistance(
+      lastOffsetDistance,
+      defaultOffsetDistanceForTile(project.tile.size)
+    );
+    const offsets = buildSymmetricOffsets(selectedPrimitives, distanceValue, {
+      makeId: (kind) => createId(kind),
+      tile: project.tile
+    });
+
+    if (offsets.length === 0) {
+      setMessage('Could not offset the current selection.');
+      return;
+    }
+
+    dispatch({
+      type: 'add-primitives',
+      primitives: offsets,
+      historyDescription: `Offset ${offsets.length} ${offsets.length === 1 ? 'shape' : 'shapes'}`
+    });
+
+    const generatedIds = offsets.map((primitive) => primitive.id);
+    setSelectedPrimitiveIds(generatedIds);
+    setSplitSelectionPrimitiveId(null);
+    setOffsetSession({
+      sourceSnapshot: selectedPrimitives,
+      generatedIds,
+      distance: distanceValue,
+      draftDistance: distanceValue
+    });
+    setLastOffsetDistance(distanceValue);
+  }, [canOffsetSelection, lastOffsetDistance, project.tile, project.tile.size, selectedPrimitives]);
+
+  const setOffsetDistanceDraft = useCallback((value: number): void => {
+    setOffsetSession((current) =>
+      current
+        ? {
+            ...current,
+            draftDistance: normalizeOffsetDistance(value, current.draftDistance)
+          }
+        : current
+    );
+  }, []);
+
+  const cancelOffsetDistance = useCallback((): void => {
+    setOffsetSession((current) =>
+      current
+        ? {
+            ...current,
+            draftDistance: current.distance
+          }
+        : current
+    );
+  }, []);
+
+  const commitOffsetDistance = useCallback((): void => {
+    if (!offsetSession) {
+      return;
+    }
+
+    const nextDistance = normalizeOffsetDistance(offsetSession.draftDistance, offsetSession.distance);
+    if (nextDistance === offsetSession.distance) {
+      return;
+    }
+
+    const updated = buildSymmetricOffsets(offsetSession.sourceSnapshot, nextDistance, {
+      reuseIds: offsetSession.generatedIds,
+      tile: project.tile
+    });
+    if (updated.length !== offsetSession.generatedIds.length) {
+      setOffsetSession((current) =>
+        current
+          ? {
+              ...current,
+              draftDistance: current.distance
+            }
+          : current
+      );
+      setMessage('That offset distance would change the number of generated shapes.');
+      return;
+    }
+
+    dispatch({
+      type: 'update-primitives',
+      primitives: updated,
+      historyDescription: 'Adjust offset distance'
+    });
+    setOffsetSession((current) =>
+      current
+        ? {
+            ...current,
+            distance: nextDistance,
+            draftDistance: nextDistance
+          }
+        : current
+    );
+    setLastOffsetDistance(nextDistance);
+  }, [offsetSession, project.tile]);
+
   const rotateSelected = useCallback(
     (clockwise: boolean): void => {
       if (selectedPrimitiveIds.length === 0) {
@@ -569,6 +779,12 @@ export function App(): JSX.Element {
         return;
       }
 
+      if (key === SELECTION_SHORTCUTS.offset) {
+        event.preventDefault();
+        offsetSelected();
+        return;
+      }
+
       if (key === SELECTION_SHORTCUTS.rotateCcw) {
         event.preventDefault();
         rotateSelected(false);
@@ -583,7 +799,7 @@ export function App(): JSX.Element {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [duplicateSelected, flipSelectedArcs, rotateSelected, selectAllVisible, setTool, toggleSplitSelection]);
+  }, [duplicateSelected, flipSelectedArcs, offsetSelected, rotateSelected, selectAllVisible, setTool, toggleSplitSelection]);
 
   const clearTile = (): void => {
     if (project.primitives.length === 0) {
@@ -600,6 +816,7 @@ export function App(): JSX.Element {
     dispatch({ type: 'clear' });
     setSelectedPrimitiveIds([]);
     setSplitSelectionPrimitiveId(null);
+    setOffsetSession(null);
     setMessage('Cleared tile.');
   };
 
@@ -646,6 +863,7 @@ export function App(): JSX.Element {
       dispatch({ type: 'hydrate', state: loaded.project });
       setPattern(loaded.pattern);
       setSplitSelectionPrimitiveId(null);
+      setOffsetSession(null);
       setMessage('Imported project JSON.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not import project file.');
@@ -670,6 +888,7 @@ export function App(): JSX.Element {
       setHiddenColors([]);
       setSelectedPrimitiveIds([]);
       setSplitSelectionPrimitiveId(null);
+      setOffsetSession(null);
       setIsPresetGalleryOpen(false);
       setMessage(`Loaded ${preset.name}.`);
     } catch (error) {
@@ -739,7 +958,10 @@ export function App(): JSX.Element {
           selectedCount={selectedPrimitiveIds.length}
           canSplitSelection={canSplitSelection}
           canFlipArcSelection={canFlipArcSelection}
+          canOffsetSelection={canOffsetSelection}
           splitSelectionArmed={splitSelectionArmed}
+          offsetDistance={offsetSession?.draftDistance ?? null}
+          showOffsetDistanceEditor={offsetSession !== null}
           onShapeChange={setShape}
           onToolChange={setTool}
           onColorChange={setColor}
@@ -750,6 +972,10 @@ export function App(): JSX.Element {
           onDuplicateSelection={duplicateSelected}
           onSplitSelection={toggleSplitSelection}
           onFlipArcSelection={flipSelectedArcs}
+          onOffsetSelection={offsetSelected}
+          onOffsetDistanceDraftChange={setOffsetDistanceDraft}
+          onCommitOffsetDistance={commitOffsetDistance}
+          onCancelOffsetDistance={cancelOffsetDistance}
           onRotateSelectionCcw={() => rotateSelected(false)}
           onRotateSelectionCw={() => rotateSelected(true)}
           onUndo={() => dispatch({ type: 'undo' })}

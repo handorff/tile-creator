@@ -1,4 +1,5 @@
 import {
+  BetweenVerticalStart,
   Circle as CircleIcon,
   CircleOff,
   Copy,
@@ -31,7 +32,10 @@ interface ToolbarProps {
   selectedCount: number;
   canSplitSelection: boolean;
   canFlipArcSelection: boolean;
+  canOffsetSelection: boolean;
   splitSelectionArmed: boolean;
+  offsetDistance: number | null;
+  showOffsetDistanceEditor: boolean;
   onShapeChange: (shape: TileShape) => void;
   onToolChange: (tool: Tool) => void;
   onColorChange: (color: string) => void;
@@ -42,6 +46,10 @@ interface ToolbarProps {
   onDuplicateSelection: () => void;
   onSplitSelection: () => void;
   onFlipArcSelection: () => void;
+  onOffsetSelection: () => void;
+  onOffsetDistanceDraftChange: (value: number) => void;
+  onCommitOffsetDistance: () => void;
+  onCancelOffsetDistance: () => void;
   onRotateSelectionCcw: () => void;
   onRotateSelectionCw: () => void;
   onUndo: () => void;
@@ -242,6 +250,16 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
           </button>
           <button
             type="button"
+            aria-label="Offset"
+            title={`Offset selected primitives (${formatShortcutKey(SELECTION_SHORTCUTS.offset)})`}
+            className="icon-button"
+            onClick={props.onOffsetSelection}
+            disabled={!props.canOffsetSelection}
+          >
+            <BetweenVerticalStart className="toolbar-icon" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
             aria-label="Rotate counterclockwise"
             title={`Rotate selection counterclockwise by ${rotationStepLabel} degrees (${formatShortcutKey(SELECTION_SHORTCUTS.rotateCcw)})`}
             className="icon-button"
@@ -261,6 +279,30 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
             <RotateCw className="toolbar-icon" aria-hidden="true" />
           </button>
         </div>
+        {props.showOffsetDistanceEditor && props.offsetDistance !== null ? (
+          <label className="field selection-field">
+            Offset distance
+            <input
+              data-testid="offset-distance"
+              type="number"
+              min={0}
+              step={1}
+              value={props.offsetDistance}
+              onChange={(event) => props.onOffsetDistanceDraftChange(Number(event.target.value))}
+              onBlur={props.onCommitOffsetDistance}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  props.onCommitOffsetDistance();
+                }
+
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  props.onCancelOffsetDistance();
+                }
+              }}
+            />
+          </label>
+        ) : null}
       </section>
 
       <section>

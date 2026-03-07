@@ -302,6 +302,10 @@ button.active {
   font-size: 0.75rem;
 }
 
+.selection-field {
+  margin-top: 0.55rem;
+}
+
 .field {
   display: grid;
   gap: 0.35rem;

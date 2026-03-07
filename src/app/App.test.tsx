@@ -18,6 +18,20 @@ vi.mock('../utils/download', async () => {
 
 import { App } from './App';
 
+function storeProject(project: unknown): void {
+  window.localStorage.setItem(
+    'tile-creator-project-v1',
+    JSON.stringify({
+      version: 1,
+      project,
+      pattern: {
+        columns: 4,
+        rows: 3
+      }
+    })
+  );
+}
+
 describe('App', () => {
   afterEach(() => {
     cleanup();
@@ -97,44 +111,34 @@ describe('App', () => {
   });
 
   it('selects only visible colors with Command+A', async () => {
-    window.localStorage.setItem(
-      'tile-creator-project-v1',
-      JSON.stringify({
-        version: 1,
-        project: {
-          tile: { shape: 'square', size: 120 },
-          primitives: [
-            {
-              id: 'line-visible',
-              kind: 'line',
-              a: { x: 0, y: 0 },
-              b: { x: 40, y: 0 },
-              color: '#111111',
-              strokeWidth: 2
-            },
-            {
-              id: 'line-hidden',
-              kind: 'line',
-              a: { x: 0, y: 20 },
-              b: { x: 40, y: 20 },
-              color: '#222222',
-              strokeWidth: 2
-            }
-          ],
-          activeTool: 'select',
-          activeColor: '#111111',
-          activeStrokeWidth: 2,
-          history: {
-            past: [],
-            future: []
-          }
+    storeProject({
+      tile: { shape: 'square', size: 120 },
+      primitives: [
+        {
+          id: 'line-visible',
+          kind: 'line',
+          a: { x: 0, y: 0 },
+          b: { x: 40, y: 0 },
+          color: '#111111',
+          strokeWidth: 2
         },
-        pattern: {
-          columns: 4,
-          rows: 3
+        {
+          id: 'line-hidden',
+          kind: 'line',
+          a: { x: 0, y: 20 },
+          b: { x: 40, y: 20 },
+          color: '#222222',
+          strokeWidth: 2
         }
-      })
-    );
+      ],
+      activeTool: 'select',
+      activeColor: '#111111',
+      activeStrokeWidth: 2,
+      history: {
+        past: [],
+        future: []
+      }
+    });
 
     const { container } = render(<App />);
 
@@ -152,5 +156,95 @@ describe('App', () => {
         (line) => line.getAttribute('stroke') === '#222222'
       )
     ).toBe(true);
+  });
+
+  it('creates offsets, allows immediate distance edits, and clears the editor when deselected', async () => {
+    storeProject({
+      tile: { shape: 'square', size: 120 },
+      primitives: [
+        {
+          id: 'line-1',
+          kind: 'line',
+          a: { x: 0, y: 0 },
+          b: { x: 40, y: 0 },
+          color: '#111111',
+          strokeWidth: 2
+        },
+        {
+          id: 'line-2',
+          kind: 'line',
+          a: { x: 40, y: 0 },
+          b: { x: 40, y: 40 },
+          color: '#111111',
+          strokeWidth: 2
+        }
+      ],
+      activeTool: 'select',
+      activeColor: '#111111',
+      activeStrokeWidth: 2,
+      history: {
+        past: [],
+        future: []
+      }
+    });
+
+    const { container } = render(<App />);
+    const canvas = container.querySelector('svg.editor-canvas');
+    expect(canvas).not.toBeNull();
+    if (!canvas) {
+      return;
+    }
+
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 700, 700));
+
+    fireEvent.keyDown(window, { key: 'a', metaKey: true });
+    await waitFor(() => expect(container.querySelectorAll('.selected-primitive')).toHaveLength(2));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Offset' }));
+
+    await waitFor(() => expect(container.querySelectorAll('.selected-primitive')).toHaveLength(4));
+    expect(screen.getByTestId('offset-distance')).toHaveValue(12);
+
+    const afterCreate = JSON.parse(window.localStorage.getItem('tile-creator-project-v1') ?? '{}');
+    expect(afterCreate.project.primitives).toHaveLength(6);
+    const createdOffset = afterCreate.project.primitives.find(
+      (primitive: { id: string; kind: string; a?: { y: number } }) =>
+        primitive.id.startsWith('line-') &&
+        primitive.kind === 'line' &&
+        primitive.a?.y === 12
+    );
+    expect(createdOffset).toBeTruthy();
+
+    fireEvent.change(screen.getByTestId('offset-distance'), { target: { value: '6' } });
+    fireEvent.blur(screen.getByTestId('offset-distance'));
+
+    await waitFor(() => expect(screen.getByTestId('offset-distance')).toHaveValue(6));
+
+    const afterEdit = JSON.parse(window.localStorage.getItem('tile-creator-project-v1') ?? '{}');
+    expect(afterEdit.project.primitives).toHaveLength(6);
+    const editedOffset = afterEdit.project.primitives.find(
+      (primitive: { id: string; kind: string; a?: { y: number } }) =>
+        primitive.kind === 'line' && primitive.a?.y === 6
+    );
+    expect(editedOffset).toBeTruthy();
+
+    fireEvent.pointerDown(canvas, {
+      clientX: 850,
+      clientY: 850,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+    fireEvent.pointerUp(canvas, {
+      clientX: 850,
+      clientY: 850,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+
+    await waitFor(() => expect(screen.queryByTestId('offset-distance')).not.toBeInTheDocument());
   });
 });
