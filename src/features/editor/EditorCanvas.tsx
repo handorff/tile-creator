@@ -12,6 +12,7 @@ import {
   getTilePolygon,
   hitTestPrimitive,
   isClockwiseMinorArc,
+  isPointOnArcSweep,
   normalizeArc,
   periodicNeighborOffsets,
   projectPointToCircle,
@@ -28,6 +29,7 @@ import { mapClientPointToWorld, renderedViewBoxLayout } from './coordinates';
 interface EditorCanvasProps {
   tile: TileConfig;
   primitives: Primitive[];
+  selectedIds: string[];
   activeTool: Tool;
   activeColor: string;
   activeStrokeWidth: number;
@@ -84,7 +86,16 @@ interface SplitCirclePreviewState {
   point: Point;
 }
 
+interface MarqueeDragState {
+  origin: Point;
+  current: Point;
+  preserveSelection: boolean;
+  baseSelectedIds: string[];
+}
+
 const DRAW_MIN_DISTANCE = 1;
+const MARQUEE_DRAG_MIN_DISTANCE = 2;
+const CARDINAL_ANGLES = [0, Math.PI / 2, Math.PI, (Math.PI * 3) / 2];
 
 function viewBoxForTile(tile: TileConfig): {
   x: number;
@@ -270,6 +281,87 @@ function projectPointToSegment(point: Point, a: Point, b: Point): Point {
   };
 }
 
+function normalizeSelectionBounds(a: Point, b: Point): {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  width: number;
+  height: number;
+} {
+  const minX = Math.min(a.x, b.x);
+  const minY = Math.min(a.y, b.y);
+  const maxX = Math.max(a.x, b.x);
+  const maxY = Math.max(a.y, b.y);
+
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: maxX - minX,
+    height: maxY - minY
+  };
+}
+
+function pointInsideBounds(
+  point: Point,
+  bounds: { minX: number; minY: number; maxX: number; maxY: number }
+): boolean {
+  return (
+    point.x >= bounds.minX &&
+    point.x <= bounds.maxX &&
+    point.y >= bounds.minY &&
+    point.y <= bounds.maxY
+  );
+}
+
+function primitiveInsideBounds(
+  primitive: Primitive,
+  bounds: { minX: number; minY: number; maxX: number; maxY: number }
+): boolean {
+  if (primitive.kind === 'line') {
+    return pointInsideBounds(primitive.a, bounds) && pointInsideBounds(primitive.b, bounds);
+  }
+
+  if (primitive.kind === 'circle') {
+    return (
+      primitive.center.x - primitive.radius >= bounds.minX &&
+      primitive.center.x + primitive.radius <= bounds.maxX &&
+      primitive.center.y - primitive.radius >= bounds.minY &&
+      primitive.center.y + primitive.radius <= bounds.maxY
+    );
+  }
+
+  const normalized = normalizeArc(primitive);
+  const radius = arcRadius(normalized);
+  const arcPoints = [normalized.start, normalized.end];
+
+  for (const angle of CARDINAL_ANGLES) {
+    const point = {
+      x: normalized.center.x + radius * Math.cos(angle),
+      y: normalized.center.y + radius * Math.sin(angle)
+    };
+    if (isPointOnArcSweep(point, normalized, 1e-4)) {
+      arcPoints.push(point);
+    }
+  }
+
+  return arcPoints.every((point) => pointInsideBounds(point, bounds));
+}
+
+function mergeSelectionIds(base: string[], next: string[]): string[] {
+  return [...new Set([...base, ...next])];
+}
+
+function sameSelectionIds(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  return a.every((id, index) => id === b[index]);
+}
+
 export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
   const { onZoomChange, zoom, onSelectionChange, onErasePrimitive, onErasePrimitives } = props;
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -278,6 +370,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [editDrag, setEditDrag] = useState<EditDragState | null>(null);
   const [splitCirclePreview, setSplitCirclePreview] = useState<SplitCirclePreviewState | null>(null);
+  const [marqueeDrag, setMarqueeDrag] = useState<MarqueeDragState | null>(null);
   const [panOffset, setPanOffset] = useState<Point>({ x: 0, y: 0 });
   const [panDrag, setPanDrag] = useState<PanDragState | null>(null);
   const baseViewBox = useMemo(() => viewBoxForTile(props.tile), [props.tile]);
@@ -306,16 +399,22 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
   }, [props.primitives]);
 
   useEffect(() => {
+    setSelectedIds((current) => (sameSelectionIds(current, props.selectedIds) ? current : props.selectedIds));
+  }, [props.selectedIds]);
+
+  useEffect(() => {
     if (props.activeTool !== 'select') {
       setSelectedIds([]);
       setEditDrag(null);
       setSplitCirclePreview(null);
+      setMarqueeDrag(null);
     }
   }, [props.activeTool]);
 
   useEffect(() => {
     setDrawing(false);
     setDraft(null);
+    setMarqueeDrag(null);
   }, [props.activeTool]);
 
   useEffect(() => {
@@ -364,6 +463,36 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
     const selectedSet = new Set(selectedIds);
     return renderedPrimitives.filter((primitive) => selectedSet.has(primitive.id));
   }, [renderedPrimitives, selectedIds]);
+  const marqueeSelectionIds = useMemo(() => {
+    if (!marqueeDrag) {
+      return null;
+    }
+
+    const bounds = normalizeSelectionBounds(marqueeDrag.origin, marqueeDrag.current);
+    if (
+      bounds.width <= MARQUEE_DRAG_MIN_DISTANCE &&
+      bounds.height <= MARQUEE_DRAG_MIN_DISTANCE
+    ) {
+      return null;
+    }
+
+    const enclosedIds = renderedPrimitives
+      .filter((primitive) => primitiveInsideBounds(primitive, bounds))
+      .map((primitive) => primitive.id);
+
+    return marqueeDrag.preserveSelection
+      ? mergeSelectionIds(marqueeDrag.baseSelectedIds, enclosedIds)
+      : enclosedIds;
+  }, [marqueeDrag, renderedPrimitives]);
+  const highlightedPrimitives = useMemo(() => {
+    const ids = marqueeSelectionIds ?? selectedIds;
+    if (ids.length === 0) {
+      return [];
+    }
+
+    const selectedSet = new Set(ids);
+    return renderedPrimitives.filter((primitive) => selectedSet.has(primitive.id));
+  }, [marqueeSelectionIds, renderedPrimitives, selectedIds]);
   const editableSelection = selectedPrimitives.length === 1 ? selectedPrimitives[0] : null;
   const splitTargetPrimitive = useMemo(
     () =>
@@ -522,8 +651,14 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
         } else {
           setSelectedIds([hit.id]);
         }
-      } else if (!event.shiftKey) {
-        setSelectedIds([]);
+      } else {
+        setMarqueeDrag({
+          origin: raw,
+          current: raw,
+          preserveSelection: event.shiftKey,
+          baseSelectedIds: selectedIds
+        });
+        capturePointer(event.currentTarget, event.pointerId);
       }
       return;
     }
@@ -654,6 +789,12 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
       return;
     }
 
+    if (marqueeDrag) {
+      const raw = toWorldPoint(event, viewBox);
+      setMarqueeDrag((current) => (current ? { ...current, current: raw } : current));
+      return;
+    }
+
     if (draft && draft.kind === 'arc' && draft.stage === 'end') {
       const raw = toWorldPoint(event, viewBox);
       const point = resolvePoint(raw);
@@ -710,6 +851,15 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
       props.onUpdatePrimitive(editDrag.preview);
       setEditDrag(null);
 
+      releasePointer(event.currentTarget, event.pointerId);
+      return;
+    }
+
+    if (marqueeDrag) {
+      const nextSelectedIds =
+        marqueeSelectionIds ?? (marqueeDrag.preserveSelection ? marqueeDrag.baseSelectedIds : []);
+      setSelectedIds(nextSelectedIds);
+      setMarqueeDrag(null);
       releasePointer(event.currentTarget, event.pointerId);
       return;
     }
@@ -842,7 +992,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
         </g>
 
         {props.activeTool === 'select'
-          ? selectedPrimitives.map((primitive) => (
+          ? highlightedPrimitives.map((primitive) => (
               <PrimitiveSvg
                 key={`selected-${primitive.id}`}
                 primitive={primitive}
@@ -1061,13 +1211,23 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
           </>
         ) : null}
 
+        {marqueeDrag ? (
+          <rect
+            className="selection-marquee"
+            x={Math.min(marqueeDrag.origin.x, marqueeDrag.current.x)}
+            y={Math.min(marqueeDrag.origin.y, marqueeDrag.current.y)}
+            width={Math.abs(marqueeDrag.current.x - marqueeDrag.origin.x)}
+            height={Math.abs(marqueeDrag.current.y - marqueeDrag.origin.y)}
+          />
+        ) : null}
+
         <path d={tilePath} className="tile-outline" />
       </svg>
       <p className="hint">
-        Scroll to zoom. Right-click-drag pans any time. Shift+click adds or removes selection. To
-        split, select one line/circle and use Split (X). Lines split in one click; circles split in
-        two clicks. Arc tool flow: click center, click start, click end. Hold Shift while placing
-        end for the major arc.
+        Scroll to zoom. Right-click-drag pans any time. Click-drag to marquee select enclosed
+        primitives, and Shift+click adds or removes selection. To split, select one line/circle and
+        use Split (X). Lines split in one click; circles split in two clicks. Arc tool flow: click
+        center, click start, click end. Hold Shift while placing end for the major arc.
       </p>
     </section>
   );

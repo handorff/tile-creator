@@ -503,6 +503,12 @@ export function App(): JSX.Element {
     });
   }, [project.primitives, selectedPrimitiveIds]);
 
+  const selectAllVisible = useCallback((): void => {
+    setTool('select');
+    setSelectedPrimitiveIds(visiblePrimitives.map((primitive) => primitive.id));
+    setSplitSelectionPrimitiveId(null);
+  }, [setTool, visiblePrimitives]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       const key = event.key.toLowerCase();
@@ -520,6 +526,12 @@ export function App(): JSX.Element {
       if (undoCombo) {
         event.preventDefault();
         dispatch({ type: 'undo' });
+        return;
+      }
+
+      if (hasPrimaryModifier && !event.shiftKey && !event.altKey && key === 'a' && !isTypingTarget(event.target)) {
+        event.preventDefault();
+        selectAllVisible();
         return;
       }
 
@@ -571,7 +583,7 @@ export function App(): JSX.Element {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [duplicateSelected, flipSelectedArcs, rotateSelected, setTool, toggleSplitSelection]);
+  }, [duplicateSelected, flipSelectedArcs, rotateSelected, selectAllVisible, setTool, toggleSplitSelection]);
 
   const clearTile = (): void => {
     if (project.primitives.length === 0) {
@@ -764,6 +776,7 @@ export function App(): JSX.Element {
               <EditorCanvas
                 tile={project.tile}
                 primitives={visiblePrimitives}
+                selectedIds={selectedPrimitiveIds}
                 activeTool={project.activeTool}
                 activeColor={project.activeColor}
                 activeStrokeWidth={project.activeStrokeWidth}

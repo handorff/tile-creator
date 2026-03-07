@@ -34,6 +34,7 @@ describe('EditorCanvas selection', () => {
       <EditorCanvas
         tile={{ shape: 'square', size: 100 }}
         primitives={primitives}
+        selectedIds={[]}
         activeTool="select"
         activeColor="#111111"
         activeStrokeWidth={2}
@@ -99,7 +100,85 @@ describe('EditorCanvas selection', () => {
       pointerType: 'mouse',
       isPrimary: true
     });
+    fireEvent.pointerUp(canvas, {
+      clientX: 850,
+      clientY: 850,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
     await waitFor(() => expect(onSelectionChange).toHaveBeenLastCalledWith([]));
+  });
+
+  it('marquee-selects enclosed primitives and shows the drag box while dragging', async () => {
+    if (!window.PointerEvent) {
+      Object.defineProperty(window, 'PointerEvent', {
+        value: MouseEvent,
+        writable: true
+      });
+    }
+
+    const onSelectionChange = vi.fn();
+    const { container } = render(
+      <EditorCanvas
+        tile={{ shape: 'square', size: 100 }}
+        primitives={primitives}
+        selectedIds={[]}
+        activeTool="select"
+        activeColor="#111111"
+        activeStrokeWidth={2}
+        zoom={1}
+        onZoomChange={vi.fn()}
+        onAddPrimitive={vi.fn()}
+        onUpdatePrimitive={vi.fn()}
+        splitSelectionPrimitiveId={null}
+        onSplitLine={vi.fn()}
+        onSplitCircle={vi.fn()}
+        onErasePrimitive={vi.fn()}
+        onErasePrimitives={vi.fn()}
+        onSelectionChange={onSelectionChange}
+      />
+    );
+
+    const canvas = container.querySelector('svg');
+    expect(canvas).not.toBeNull();
+    if (!canvas) {
+      return;
+    }
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 700, 700));
+
+    fireEvent.pointerDown(canvas, {
+      clientX: 350,
+      clientY: 350,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+    fireEvent.pointerMove(canvas, {
+      clientX: 440,
+      clientY: 390,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+
+    expect(container.querySelector('.selection-marquee')).not.toBeNull();
+    expect(container.querySelectorAll('.selected-primitive')).toHaveLength(1);
+    expect(onSelectionChange).toHaveBeenLastCalledWith([]);
+
+    fireEvent.pointerUp(canvas, {
+      clientX: 440,
+      clientY: 390,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+
+    await waitFor(() => expect(onSelectionChange).toHaveBeenLastCalledWith(['line-1']));
   });
 
   it('splits the armed selected line when clicking a split point', async () => {
@@ -115,6 +194,7 @@ describe('EditorCanvas selection', () => {
       <EditorCanvas
         tile={{ shape: 'square', size: 100 }}
         primitives={primitives}
+        selectedIds={[]}
         activeTool="select"
         activeColor="#111111"
         activeStrokeWidth={2}
@@ -164,6 +244,7 @@ describe('EditorCanvas selection', () => {
       <EditorCanvas
         tile={{ shape: 'square', size: 100 }}
         primitives={primitives}
+        selectedIds={[]}
         activeTool="select"
         activeColor="#111111"
         activeStrokeWidth={2}
@@ -234,6 +315,7 @@ describe('EditorCanvas selection', () => {
             color: '#111111'
           }
         ]}
+        selectedIds={[]}
         activeTool="select"
         activeColor="#111111"
         activeStrokeWidth={2}
@@ -312,6 +394,7 @@ describe('EditorCanvas selection', () => {
       <EditorCanvas
         tile={{ shape: 'square', size: 100 }}
         primitives={[]}
+        selectedIds={[]}
         activeTool="arc"
         activeColor="#111111"
         activeStrokeWidth={2}
@@ -406,6 +489,7 @@ describe('EditorCanvas selection', () => {
       <EditorCanvas
         tile={{ shape: 'square', size: 100 }}
         primitives={[]}
+        selectedIds={[]}
         activeTool="arc"
         activeColor="#111111"
         activeStrokeWidth={2}

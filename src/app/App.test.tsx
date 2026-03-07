@@ -95,4 +95,62 @@ describe('App', () => {
     expect(downloadBlobMock).not.toHaveBeenCalled();
     expect(screen.getByText('GIF export failed.')).toBeInTheDocument();
   });
+
+  it('selects only visible colors with Command+A', async () => {
+    window.localStorage.setItem(
+      'tile-creator-project-v1',
+      JSON.stringify({
+        version: 1,
+        project: {
+          tile: { shape: 'square', size: 120 },
+          primitives: [
+            {
+              id: 'line-visible',
+              kind: 'line',
+              a: { x: 0, y: 0 },
+              b: { x: 40, y: 0 },
+              color: '#111111',
+              strokeWidth: 2
+            },
+            {
+              id: 'line-hidden',
+              kind: 'line',
+              a: { x: 0, y: 20 },
+              b: { x: 40, y: 20 },
+              color: '#222222',
+              strokeWidth: 2
+            }
+          ],
+          activeTool: 'select',
+          activeColor: '#111111',
+          activeStrokeWidth: 2,
+          history: {
+            past: [],
+            future: []
+          }
+        },
+        pattern: {
+          columns: 4,
+          rows: 3
+        }
+      })
+    );
+
+    const { container } = render(<App />);
+
+    fireEvent.click(screen.getByTestId('visibility-off-#222222'));
+    fireEvent.keyDown(window, { key: 'a', metaKey: true });
+
+    await waitFor(() => expect(container.querySelectorAll('.selected-primitive')).toHaveLength(1));
+
+    fireEvent.keyDown(window, { key: 'Delete' });
+    fireEvent.click(screen.getByTestId('visibility-on-#222222'));
+
+    await waitFor(() => expect(container.querySelectorAll('.editor-canvas line')).toHaveLength(9));
+    expect(
+      [...container.querySelectorAll('.editor-canvas line')].every(
+        (line) => line.getAttribute('stroke') === '#222222'
+      )
+    ).toBe(true);
+  });
 });
