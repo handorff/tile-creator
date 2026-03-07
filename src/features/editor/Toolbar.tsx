@@ -1,4 +1,5 @@
 import {
+  BetweenVerticalStart,
   Circle as CircleIcon,
   CircleOff,
   Copy,
@@ -251,10 +252,11 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
             type="button"
             aria-label="Offset"
             title={`Offset selected primitives (${formatShortcutKey(SELECTION_SHORTCUTS.offset)})`}
+            className="icon-button"
             onClick={props.onOffsetSelection}
             disabled={!props.canOffsetSelection}
           >
-            Offset
+            <BetweenVerticalStart className="toolbar-icon" aria-hidden="true" />
           </button>
           <button
             type="button"

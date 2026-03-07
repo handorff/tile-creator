@@ -1,6 +1,75 @@
 import { describe, expect, it } from 'vitest';
-import type { Primitive } from '../types/model';
+import type { LinePrimitive, Point, Primitive, TileConfig } from '../types/model';
 import { buildSymmetricOffsets } from './offset';
+import { periodicNeighborOffsets } from './tile';
+
+function pointDistance(a: Point, b: Point): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function alignPeriodically(point: Point, target: Point, tile: TileConfig): Point {
+  const offsets = [{ x: 0, y: 0 }, ...periodicNeighborOffsets(tile)];
+  let best = point;
+  let bestDistance = pointDistance(point, target);
+
+  for (const offset of offsets) {
+    const candidate = {
+      x: point.x + offset.x,
+      y: point.y + offset.y
+    };
+    const candidateDistance = pointDistance(candidate, target);
+    if (candidateDistance < bestDistance) {
+      best = candidate;
+      bestDistance = candidateDistance;
+    }
+  }
+
+  return best;
+}
+
+function seamEndpointsForSource(
+  offsets: Primitive[],
+  source: LinePrimitive
+): { cw: Point; ccw: Point } {
+  const matches = offsets.filter((primitive): primitive is LinePrimitive => {
+    if (primitive.kind !== 'line') {
+      return false;
+    }
+
+    return pointDistance(primitive.a, source.b) <= 2 || pointDistance(primitive.b, source.b) <= 2;
+  });
+
+  expect(matches).toHaveLength(2);
+
+  const direction = {
+    x: source.b.x - source.a.x,
+    y: source.b.y - source.a.y
+  };
+  let cw: Point | null = null;
+  let ccw: Point | null = null;
+
+  for (const match of matches) {
+    const seamPoint = pointDistance(match.a, source.b) <= pointDistance(match.b, source.b) ? match.b : match.a;
+    const offset = {
+      x: seamPoint.x - source.a.x,
+      y: seamPoint.y - source.a.y
+    };
+    const side = direction.x * offset.y - direction.y * offset.x;
+    if (side >= 0) {
+      ccw = seamPoint;
+    } else {
+      cw = seamPoint;
+    }
+  }
+
+  expect(cw).not.toBeNull();
+  expect(ccw).not.toBeNull();
+
+  return {
+    cw: cw as Point,
+    ccw: ccw as Point
+  };
+}
 
 describe('buildSymmetricOffsets', () => {
   it('connects offsets across a shared line endpoint with miter joins', () => {
@@ -278,5 +347,62 @@ describe('buildSymmetricOffsets', () => {
 
     expect(topBoundaryTouches).toHaveLength(2);
     expect(bottomBoundaryTouches).toHaveLength(2);
+  });
+
+  it('preserves cyclic wrapped-junction pairings across the seam', () => {
+    const tile: TileConfig = { shape: 'square', size: 10 };
+    const primitives: LinePrimitive[] = [
+      {
+        id: 'top-left',
+        kind: 'line',
+        a: { x: 0, y: -10 },
+        b: { x: -3, y: -3 },
+        color: '#111'
+      },
+      {
+        id: 'top-right',
+        kind: 'line',
+        a: { x: 0, y: -10 },
+        b: { x: 3, y: -3 },
+        color: '#111'
+      },
+      {
+        id: 'bottom-left',
+        kind: 'line',
+        a: { x: 0, y: 10 },
+        b: { x: -3, y: 3 },
+        color: '#111'
+      },
+      {
+        id: 'bottom-right',
+        kind: 'line',
+        a: { x: 0, y: 10 },
+        b: { x: 3, y: 3 },
+        color: '#111'
+      }
+    ];
+
+    const offsets = buildSymmetricOffsets(primitives, 1, { tile });
+    expect(offsets).toHaveLength(8);
+
+    const anchor = primitives[0].a;
+    const topLeft = seamEndpointsForSource(offsets, primitives[0]);
+    const topRight = seamEndpointsForSource(offsets, primitives[1]);
+    const bottomLeft = seamEndpointsForSource(offsets, primitives[2]);
+    const bottomRight = seamEndpointsForSource(offsets, primitives[3]);
+
+    const pairings: Array<[Point, Point]> = [
+      [topLeft.ccw, bottomLeft.cw],
+      [bottomLeft.ccw, bottomRight.cw],
+      [bottomRight.ccw, topRight.cw],
+      [topRight.ccw, topLeft.cw]
+    ];
+
+    for (const [a, b] of pairings) {
+      const alignedA = alignPeriodically(a, anchor, tile);
+      const alignedB = alignPeriodically(b, anchor, tile);
+      expect(alignedA.x).toBeCloseTo(alignedB.x, 6);
+      expect(alignedA.y).toBeCloseTo(alignedB.y, 6);
+    }
   });
 });

@@ -1,7 +1,8 @@
 import type { ArcPrimitive, CirclePrimitive, Point, Primitive, TileConfig } from '../types/model';
 import { add, cross, distance, dot, EPSILON, pointKey, scale, subtract } from '../utils/math';
 import { arcRadius, isClockwiseMinorArc, isPointOnArcSweep, normalizeArc, projectPointToCircle } from './arc';
-import { getTilePolygon } from './tile';
+import { getTilePolygon, periodicNeighborOffsets } from './tile';
+import { translatePrimitive } from './transforms';
 
 type PathPrimitive = Extract<Primitive, { kind: 'line' | 'arc' }>;
 type OffsetPrimitive = Extract<Primitive, { kind: 'line' | 'arc' | 'circle' }>;
@@ -9,6 +10,7 @@ type OffsetSide = 1 | -1;
 const ENDPOINT_CLUSTER_TOLERANCE = 1;
 
 interface GraphEdge {
+  id: number;
   primitive: PathPrimitive;
   sourceIndex: number;
   start: Point;
@@ -22,6 +24,8 @@ interface DirectedEdge {
   sourceIndex: number;
   start: Point;
   end: Point;
+  sourceStart: Point;
+  sourceEnd: Point;
   startKey: string;
   endKey: string;
 }
@@ -43,10 +47,62 @@ interface EndpointCluster {
   point: Point;
 }
 
+interface PrimitiveEndpointRef {
+  primitiveIndex: number;
+  endpoint: 'start' | 'end';
+}
+
+interface WrappedBoundaryIncidence {
+  sourceIndex: number;
+  point: Point;
+  other: Point;
+  ccw: PrimitiveEndpointRef | null;
+  cw: PrimitiveEndpointRef | null;
+}
+
 function midpoint(a: Point, b: Point): Point {
   return {
     x: (a.x + b.x) / 2,
     y: (a.y + b.y) / 2
+  };
+}
+
+function translationOffsets(tile: TileConfig | undefined): Point[] {
+  const offsets = [{ x: 0, y: 0 }];
+  if (!tile) {
+    return offsets;
+  }
+
+  for (const offset of periodicNeighborOffsets(tile)) {
+    if (Math.abs(offset.x) < EPSILON && Math.abs(offset.y) < EPSILON) {
+      continue;
+    }
+    offsets.push(offset);
+  }
+
+  return offsets;
+}
+
+function alignPointToTarget(point: Point, target: Point, tile: TileConfig | undefined): { point: Point; offset: Point } {
+  const offsets = translationOffsets(tile);
+  let bestOffset = offsets[0];
+  let bestPoint = add(point, bestOffset);
+  let bestDistance = distance(bestPoint, target);
+
+  for (let index = 1; index < offsets.length; index += 1) {
+    const offset = offsets[index];
+    const candidate = add(point, offset);
+    const candidateDistance = distance(candidate, target);
+    if (candidateDistance < bestDistance) {
+      bestDistance = candidateDistance;
+      bestOffset = offset;
+      bestPoint = candidate;
+    }
+  }
+
+  return {
+    point: bestPoint,
+    offset: bestOffset
   };
 }
 
@@ -341,9 +397,7 @@ function clusterEndpointKey(point: Point, clusters: EndpointCluster[]): string {
     return roundedMatch.key;
   }
 
-  const nearbyMatch = clusters.find(
-    (cluster) => distance(cluster.point, point) <= ENDPOINT_CLUSTER_TOLERANCE
-  );
+  const nearbyMatch = clusters.find((cluster) => distance(cluster.point, point) <= ENDPOINT_CLUSTER_TOLERANCE);
   if (nearbyMatch) {
     return nearbyMatch.key;
   }
@@ -355,54 +409,100 @@ function clusterEndpointKey(point: Point, clusters: EndpointCluster[]): string {
   return roundedKey;
 }
 
-function buildDirectedEdge(edge: GraphEdge, startKey: string): DirectedEdge {
-  if (edge.startKey === startKey) {
-    return {
-      primitive: edge.primitive,
-      sourceIndex: edge.sourceIndex,
-      start: edge.start,
-      end: edge.end,
-      startKey: edge.startKey,
-      endKey: edge.endKey
-    };
-  }
+function buildDirectedEdge(
+  edge: GraphEdge,
+  startKey: string,
+  startWorldPoint: Point,
+  tile: TileConfig | undefined
+): DirectedEdge {
+  const sourceStart = edge.startKey === startKey ? edge.start : edge.end;
+  const sourceEnd = edge.startKey === startKey ? edge.end : edge.start;
+  const alignment = alignPointToTarget(sourceStart, startWorldPoint, tile);
 
   return {
     primitive: edge.primitive,
     sourceIndex: edge.sourceIndex,
-    start: edge.end,
-    end: edge.start,
-    startKey: edge.endKey,
-    endKey: edge.startKey
+    start: alignment.point,
+    end: add(sourceEnd, alignment.offset),
+    sourceStart,
+    sourceEnd,
+    startKey,
+    endKey: edge.startKey === startKey ? edge.endKey : edge.startKey
   };
+}
+
+function directionVector(edge: DirectedEdge): Point {
+  const delta = subtract(edge.end, edge.start);
+  const magnitude = Math.hypot(delta.x, delta.y);
+  if (magnitude <= EPSILON) {
+    return { x: 0, y: 0 };
+  }
+
+  return {
+    x: delta.x / magnitude,
+    y: delta.y / magnitude
+  };
+}
+
+function chooseNextEdge(
+  edges: GraphEdge[],
+  adjacency: Map<string, number[]>,
+  visited: Set<number>,
+  currentEdgeId: number,
+  currentEdge: DirectedEdge,
+  tile: TileConfig | undefined
+): { edgeId: number; directed: DirectedEdge } | null {
+  const candidates = (adjacency.get(currentEdge.endKey) ?? []).filter(
+    (candidateId) => candidateId !== currentEdgeId && !visited.has(candidateId)
+  );
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const incoming = directionVector(currentEdge);
+  let best: { edgeId: number; directed: DirectedEdge } | null = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  for (const candidateId of candidates) {
+    const directed = buildDirectedEdge(edges[candidateId], currentEdge.endKey, currentEdge.end, tile);
+    const score = dot(incoming, directionVector(directed));
+    if (score > bestScore) {
+      bestScore = score;
+      best = {
+        edgeId: candidateId,
+        directed
+      };
+    }
+  }
+
+  return best;
 }
 
 function walkPath(
   edges: GraphEdge[],
+  clusters: Map<string, EndpointCluster>,
   adjacency: Map<string, number[]>,
   visited: Set<number>,
   startKey: string,
-  firstEdgeId: number
+  firstEdgeId: number,
+  tile: TileConfig | undefined
 ): PathComponent {
+  const startWorldPoint = clusters.get(startKey)?.point ?? edges[firstEdgeId].start;
   const segments: DirectedEdge[] = [];
-  let currentKey = startKey;
   let edgeId: number | null = firstEdgeId;
+  let current = buildDirectedEdge(edges[firstEdgeId], startKey, startWorldPoint, tile);
 
   while (edgeId !== null && !visited.has(edgeId)) {
     visited.add(edgeId);
-    const edge = edges[edgeId];
-    const directed = buildDirectedEdge(edge, currentKey);
-    segments.push(directed);
-    currentKey = directed.endKey;
+    segments.push(current);
 
-    const nextEdges = (adjacency.get(currentKey) ?? []).filter(
-      (candidateId) => candidateId !== edgeId && !visited.has(candidateId)
-    );
-    if ((adjacency.get(currentKey)?.length ?? 0) !== 2 || nextEdges.length === 0) {
+    const next = chooseNextEdge(edges, adjacency, visited, edgeId, current, tile);
+    if (!next) {
       break;
     }
 
-    edgeId = nextEdges[0];
+    edgeId = next.edgeId;
+    current = next.directed;
   }
 
   return {
@@ -414,33 +514,34 @@ function walkPath(
 
 function walkCycle(
   edges: GraphEdge[],
+  clusters: Map<string, EndpointCluster>,
   adjacency: Map<string, number[]>,
   visited: Set<number>,
-  firstEdgeId: number
+  firstEdgeId: number,
+  tile: TileConfig | undefined
 ): PathComponent {
-  const segments: DirectedEdge[] = [];
   const firstEdge = edges[firstEdgeId];
   const startKey = firstEdge.startKey;
-  let currentKey = startKey;
+  const startWorldPoint = clusters.get(startKey)?.point ?? firstEdge.start;
+  const segments: DirectedEdge[] = [];
   let edgeId: number | null = firstEdgeId;
+  let current = buildDirectedEdge(firstEdge, startKey, startWorldPoint, tile);
   let closed = false;
 
   while (edgeId !== null && !visited.has(edgeId)) {
     visited.add(edgeId);
-    const edge = edges[edgeId];
-    const directed = buildDirectedEdge(edge, currentKey);
-    segments.push(directed);
-    currentKey = directed.endKey;
+    segments.push(current);
 
-    const nextEdges = (adjacency.get(currentKey) ?? []).filter(
-      (candidateId) => candidateId !== edgeId && !visited.has(candidateId)
-    );
-    if (nextEdges.length === 0) {
-      closed = currentKey === startKey;
+    const next = chooseNextEdge(edges, adjacency, visited, edgeId, current, tile);
+    if (!next) {
+      closed =
+        current.endKey === startKey &&
+        distance(current.end, startWorldPoint) <= ENDPOINT_CLUSTER_TOLERANCE;
       break;
     }
 
-    edgeId = nextEdges[0];
+    edgeId = next.edgeId;
+    current = next.directed;
   }
 
   return {
@@ -450,7 +551,7 @@ function walkCycle(
   };
 }
 
-function decomposePathComponents(primitives: Primitive[]): PathComponent[] {
+function decomposePathComponents(primitives: Primitive[], tile: TileConfig | undefined): PathComponent[] {
   const edges: GraphEdge[] = [];
   const adjacency = new Map<string, number[]>();
   const endpointClusters: EndpointCluster[] = [];
@@ -467,6 +568,7 @@ function decomposePathComponents(primitives: Primitive[]): PathComponent[] {
     const endKey = clusterEndpointKey(end, endpointClusters);
     const edgeId = edges.length;
     edges.push({
+      id: edgeId,
       primitive: normalized,
       sourceIndex,
       start,
@@ -478,10 +580,14 @@ function decomposePathComponents(primitives: Primitive[]): PathComponent[] {
     adjacency.set(endKey, [...(adjacency.get(endKey) ?? []), edgeId]);
   });
 
+  const clusters = new Map(endpointClusters.map((cluster) => [cluster.key, cluster]));
   const visited = new Set<number>();
   const paths: PathComponent[] = [];
   const terminalKeys = [...adjacency.entries()]
-    .filter(([, edgeIds]) => edgeIds.length !== 2)
+    .filter(([, edgeIds]) => edgeIds.length === 1)
+    .map(([key]) => key);
+  const junctionKeys = [...adjacency.entries()]
+    .filter(([, edgeIds]) => edgeIds.length > 2)
     .map(([key]) => key);
 
   for (const terminalKey of terminalKeys) {
@@ -489,7 +595,16 @@ function decomposePathComponents(primitives: Primitive[]): PathComponent[] {
       if (visited.has(edgeId)) {
         continue;
       }
-      paths.push(walkPath(edges, adjacency, visited, terminalKey, edgeId));
+      paths.push(walkPath(edges, clusters, adjacency, visited, terminalKey, edgeId, tile));
+    }
+  }
+
+  for (const junctionKey of junctionKeys) {
+    for (const edgeId of adjacency.get(junctionKey) ?? []) {
+      if (visited.has(edgeId)) {
+        continue;
+      }
+      paths.push(walkPath(edges, clusters, adjacency, visited, junctionKey, edgeId, tile));
     }
   }
 
@@ -497,7 +612,7 @@ function decomposePathComponents(primitives: Primitive[]): PathComponent[] {
     if (visited.has(edgeId)) {
       continue;
     }
-    paths.push(walkCycle(edges, adjacency, visited, edgeId));
+    paths.push(walkCycle(edges, clusters, adjacency, visited, edgeId, tile));
   }
 
   return paths.sort((a, b) => a.order - b.order);
@@ -579,30 +694,163 @@ function joinOffsetPath(primitives: OffsetPrimitive[], closed: boolean): OffsetP
   return joined;
 }
 
-function boundaryIntersectionsForPrimitive(primitive: OffsetPrimitive, tilePolygon: Point[]): Point[] {
-  const intersections: Point[] = [];
+function setPrimitiveEndpoint(
+  primitive: OffsetPrimitive,
+  endpoint: 'start' | 'end',
+  point: Point
+): OffsetPrimitive {
+  return endpoint === 'start' ? setPrimitiveStart(primitive, point) : setPrimitiveEnd(primitive, point);
+}
 
-  for (let index = 0; index < tilePolygon.length; index += 1) {
-    const a = tilePolygon[index];
-    const b = tilePolygon[(index + 1) % tilePolygon.length];
+function reverseOffsetPrimitive(primitive: OffsetPrimitive): OffsetPrimitive {
+  if (primitive.kind === 'line') {
+    return {
+      ...primitive,
+      a: primitive.b,
+      b: primitive.a
+    };
+  }
 
-    if (primitive.kind === 'line') {
-      const intersection = lineInfiniteSegmentIntersection(primitive.a, primitive.b, a, b);
-      if (intersection) {
-        intersections.push(intersection);
+  if (primitive.kind === 'arc') {
+    return {
+      ...primitive,
+      start: primitive.end,
+      end: primitive.start,
+      clockwise: !primitive.clockwise
+    };
+  }
+
+  return primitive;
+}
+
+function orientPrimitiveForJoin(
+  primitive: OffsetPrimitive,
+  endpoint: 'start' | 'end',
+  role: 'previous' | 'next'
+): OffsetPrimitive {
+  const shouldReverse = role === 'previous' ? endpoint === 'start' : endpoint === 'end';
+  return shouldReverse ? reverseOffsetPrimitive(primitive) : primitive;
+}
+
+function applyWrappedBoundaryJoins(
+  primitives: OffsetPrimitive[],
+  incidences: WrappedBoundaryIncidence[],
+  tile: TileConfig | undefined
+): OffsetPrimitive[] {
+  if (!tile || incidences.length === 0) {
+    return primitives;
+  }
+
+  const groups: Array<{ anchor: Point; members: WrappedBoundaryIncidence[] }> = [];
+  for (const incidence of incidences) {
+    let targetGroup: { anchor: Point; members: WrappedBoundaryIncidence[] } | null = null;
+
+    for (const group of groups) {
+      const aligned = alignPointToTarget(incidence.point, group.anchor, tile);
+      if (distance(aligned.point, group.anchor) <= ENDPOINT_CLUSTER_TOLERANCE) {
+        targetGroup = group;
+        break;
       }
+    }
+
+    if (!targetGroup) {
+      targetGroup = {
+        anchor: incidence.point,
+        members: []
+      };
+      groups.push(targetGroup);
+    }
+
+    targetGroup.members.push(incidence);
+  }
+
+  const adjusted = [...primitives];
+
+  for (const group of groups) {
+    if (group.members.length <= 2) {
       continue;
     }
 
-    if (primitive.kind === 'arc') {
-      const candidates = lineCircleIntersectionsInfinite(a, b, primitive.center, arcRadius(primitive)).filter(
-        (candidate) =>
-          pointOnSegment(candidate, a, b, ENDPOINT_CLUSTER_TOLERANCE) &&
-          isPointOnArcSweep(candidate, primitive, ENDPOINT_CLUSTER_TOLERANCE)
+    const ordered = group.members
+      .map((incidence) => {
+        const alignment = alignPointToTarget(incidence.point, group.anchor, tile);
+        const alignedOther = add(incidence.other, alignment.offset);
+        const direction = subtract(alignedOther, alignment.point);
+        return {
+          incidence,
+          offset: alignment.offset,
+          angle: Math.atan2(direction.y, direction.x)
+        };
+      })
+      .sort((a, b) => a.angle - b.angle);
+
+    for (let index = 0; index < ordered.length; index += 1) {
+      const current = ordered[index];
+      const next = ordered[(index + 1) % ordered.length];
+      if (!current.incidence.ccw || !next.incidence.cw) {
+        continue;
+      }
+
+      const currentPrimitive = primitives[current.incidence.ccw.primitiveIndex];
+      const nextPrimitive = primitives[next.incidence.cw.primitiveIndex];
+      if (!currentPrimitive || !nextPrimitive) {
+        continue;
+      }
+
+      const currentWorld = translatePrimitive(currentPrimitive, current.offset) as OffsetPrimitive;
+      const nextWorld = translatePrimitive(nextPrimitive, next.offset) as OffsetPrimitive;
+      const join = computeJoinPoint(
+        orientPrimitiveForJoin(currentWorld, current.incidence.ccw.endpoint, 'previous'),
+        orientPrimitiveForJoin(nextWorld, next.incidence.cw.endpoint, 'next')
       );
 
-      for (const candidate of candidates) {
-        intersections.push(candidate);
+      adjusted[current.incidence.ccw.primitiveIndex] = setPrimitiveEndpoint(
+        adjusted[current.incidence.ccw.primitiveIndex],
+        current.incidence.ccw.endpoint,
+        subtract(join, current.offset)
+      );
+      adjusted[next.incidence.cw.primitiveIndex] = setPrimitiveEndpoint(
+        adjusted[next.incidence.cw.primitiveIndex],
+        next.incidence.cw.endpoint,
+        subtract(join, next.offset)
+      );
+    }
+  }
+
+  return adjusted;
+}
+
+function boundaryIntersectionsForPrimitive(
+  primitive: OffsetPrimitive,
+  tilePolygon: Point[],
+  tile: TileConfig | undefined
+): Point[] {
+  const intersections: Point[] = [];
+  const boundaryOffsets = translationOffsets(tile);
+
+  for (const boundaryOffset of boundaryOffsets) {
+    for (let index = 0; index < tilePolygon.length; index += 1) {
+      const a = add(tilePolygon[index], boundaryOffset);
+      const b = add(tilePolygon[(index + 1) % tilePolygon.length], boundaryOffset);
+
+      if (primitive.kind === 'line') {
+        const intersection = lineInfiniteSegmentIntersection(primitive.a, primitive.b, a, b);
+        if (intersection) {
+          intersections.push(intersection);
+        }
+        continue;
+      }
+
+      if (primitive.kind === 'arc') {
+        const candidates = lineCircleIntersectionsInfinite(a, b, primitive.center, arcRadius(primitive)).filter(
+          (candidate) =>
+            pointOnSegment(candidate, a, b, ENDPOINT_CLUSTER_TOLERANCE) &&
+            isPointOnArcSweep(candidate, primitive, ENDPOINT_CLUSTER_TOLERANCE)
+        );
+
+        for (const candidate of candidates) {
+          intersections.push(candidate);
+        }
       }
     }
   }
@@ -617,10 +865,11 @@ function boundaryIntersectionsForPrimitive(primitive: OffsetPrimitive, tilePolyg
 
 function trimOpenPathToTileBoundary(
   primitives: OffsetPrimitive[],
+  primitiveIndices: number[],
   path: PathComponent,
   tile: TileConfig | undefined
 ): OffsetPrimitive[] {
-  if (!tile || path.closed || primitives.length === 0) {
+  if (!tile || path.closed || primitives.length === 0 || primitiveIndices.length === 0) {
     return primitives;
   }
 
@@ -629,20 +878,21 @@ function trimOpenPathToTileBoundary(
   const firstSegment = path.segments[0];
   const lastSegment = path.segments[path.segments.length - 1];
 
-  if (pointOnTileBoundary(firstSegment.start, tilePolygon)) {
-    const candidates = boundaryIntersectionsForPrimitive(trimmed[0], tilePolygon);
-    const boundaryPoint = chooseClosest(candidates, primitiveStart(trimmed[0]));
+  if (pointOnTileBoundary(firstSegment.sourceStart, tilePolygon)) {
+    const firstPrimitiveIndex = primitiveIndices[0];
+    const candidates = boundaryIntersectionsForPrimitive(trimmed[firstPrimitiveIndex], tilePolygon, tile);
+    const boundaryPoint = chooseClosest(candidates, primitiveStart(trimmed[firstPrimitiveIndex]));
     if (boundaryPoint) {
-      trimmed[0] = setPrimitiveStart(trimmed[0], boundaryPoint);
+      trimmed[firstPrimitiveIndex] = setPrimitiveStart(trimmed[firstPrimitiveIndex], boundaryPoint);
     }
   }
 
-  if (pointOnTileBoundary(lastSegment.end, tilePolygon)) {
-    const lastIndex = trimmed.length - 1;
-    const candidates = boundaryIntersectionsForPrimitive(trimmed[lastIndex], tilePolygon);
-    const boundaryPoint = chooseClosest(candidates, primitiveEnd(trimmed[lastIndex]));
+  if (pointOnTileBoundary(lastSegment.sourceEnd, tilePolygon)) {
+    const lastPrimitiveIndex = primitiveIndices[primitiveIndices.length - 1];
+    const candidates = boundaryIntersectionsForPrimitive(trimmed[lastPrimitiveIndex], tilePolygon, tile);
+    const boundaryPoint = chooseClosest(candidates, primitiveEnd(trimmed[lastPrimitiveIndex]));
     if (boundaryPoint) {
-      trimmed[lastIndex] = setPrimitiveEnd(trimmed[lastIndex], boundaryPoint);
+      trimmed[lastPrimitiveIndex] = setPrimitiveEnd(trimmed[lastPrimitiveIndex], boundaryPoint);
     }
   }
 
@@ -700,6 +950,8 @@ export function buildSymmetricOffsets(
   }
 
   const assignId = createIdAssigner(options);
+  const tilePolygon = options.tile ? getTilePolygon(options.tile) : null;
+  const wrappedBoundaryIncidences: WrappedBoundaryIncidence[] = [];
   const components: Array<
     | { order: number; kind: 'circle'; primitive: CirclePrimitive }
     | { order: number; kind: 'path'; path: PathComponent }
@@ -715,7 +967,7 @@ export function buildSymmetricOffsets(
     }
   });
 
-  for (const path of decomposePathComponents(primitives)) {
+  for (const path of decomposePathComponents(primitives, options.tile)) {
     if (path.segments.length > 0) {
       components.push({
         order: path.order,
@@ -750,6 +1002,7 @@ export function buildSymmetricOffsets(
       continue;
     }
 
+    const sideIndices = new Map<OffsetSide, number[]>();
     for (const side of [1, -1] as const) {
       const sidePrimitives: OffsetPrimitive[] = [];
       let valid = true;
@@ -760,6 +1013,7 @@ export function buildSymmetricOffsets(
           valid = false;
           break;
         }
+
         sidePrimitives.push(next);
       }
 
@@ -767,15 +1021,50 @@ export function buildSymmetricOffsets(
         continue;
       }
 
-      output.push(
-        ...trimOpenPathToTileBoundary(
-          joinOffsetPath(sidePrimitives, component.path.closed),
-          component.path,
-          options.tile
-        )
+      const startIndex = output.length;
+      output.push(...joinOffsetPath(sidePrimitives, component.path.closed));
+      const primitiveIndices = Array.from({ length: sidePrimitives.length }, (_, index) => startIndex + index);
+      sideIndices.set(side, primitiveIndices);
+      const trimmed = trimOpenPathToTileBoundary(
+        output,
+        primitiveIndices,
+        component.path,
+        options.tile
       );
+      output.splice(0, output.length, ...trimmed);
     }
+
+    if (!tilePolygon || component.path.segments.length === 0) {
+      continue;
+    }
+
+    const leftIndices = sideIndices.get(1) ?? [];
+    const rightIndices = sideIndices.get(-1) ?? [];
+    component.path.segments.forEach((segment, segmentIndex) => {
+      const leftIndex = leftIndices[segmentIndex];
+      const rightIndex = rightIndices[segmentIndex];
+
+      if (pointOnTileBoundary(segment.sourceStart, tilePolygon)) {
+        wrappedBoundaryIncidences.push({
+          sourceIndex: segment.sourceIndex,
+          point: segment.sourceStart,
+          other: segment.sourceEnd,
+          ccw: leftIndex === undefined ? null : { primitiveIndex: leftIndex, endpoint: 'start' },
+          cw: rightIndex === undefined ? null : { primitiveIndex: rightIndex, endpoint: 'start' }
+        });
+      }
+
+      if (pointOnTileBoundary(segment.sourceEnd, tilePolygon)) {
+        wrappedBoundaryIncidences.push({
+          sourceIndex: segment.sourceIndex,
+          point: segment.sourceEnd,
+          other: segment.sourceStart,
+          ccw: rightIndex === undefined ? null : { primitiveIndex: rightIndex, endpoint: 'end' },
+          cw: leftIndex === undefined ? null : { primitiveIndex: leftIndex, endpoint: 'end' }
+        });
+      }
+    });
   }
 
-  return output;
+  return applyWrappedBoundaryJoins(output, wrappedBoundaryIncidences, options.tile);
 }
