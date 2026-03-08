@@ -37,7 +37,6 @@ interface ToolbarProps {
   splitSelectionArmed: boolean;
   offsetDistance: number | null;
   showOffsetDistanceEditor: boolean;
-  onShapeChange: (shape: TileShape) => void;
   onToolChange: (tool: Tool) => void;
   onColorChange: (color: string) => void;
   onStrokeWidthChange: (strokeWidth: number) => void;
@@ -80,20 +79,6 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
 
   return (
     <aside className="toolbar">
-      <section>
-        <h2>Tile</h2>
-        <label className="field">
-          Shape
-          <select
-            value={props.shape}
-            onChange={(event) => props.onShapeChange(event.target.value as TileShape)}
-          >
-            <option value="square">Square</option>
-            <option value="hex-pointy">Hex (pointy)</option>
-          </select>
-        </label>
-      </section>
-
       <section>
         <h2>Tools</h2>
         <div className="button-row tool-buttons">

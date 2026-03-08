@@ -202,6 +202,7 @@ export function App(): JSX.Element {
   const [isExportingGif, setIsExportingGif] = useState<boolean>(false);
   const [loadingPresetId, setLoadingPresetId] = useState<string | null>(null);
   const [isPresetGalleryOpen, setIsPresetGalleryOpen] = useState<boolean>(false);
+  const [isNewTileModalOpen, setIsNewTileModalOpen] = useState<boolean>(false);
   const [loadingPresetPreviewIds, setLoadingPresetPreviewIds] = useState<string[]>([]);
   const [presetPreviewErrors, setPresetPreviewErrors] = useState<Record<string, string>>({});
   const [presetProjects, setPresetProjects] = useState<Record<string, LoadedPreset>>({});
@@ -238,19 +239,20 @@ export function App(): JSX.Element {
   }, [showPatternPreview]);
 
   useEffect(() => {
-    if (!isPresetGalleryOpen) {
+    if (!isPresetGalleryOpen && !isNewTileModalOpen) {
       return;
     }
 
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
         setIsPresetGalleryOpen(false);
+        setIsNewTileModalOpen(false);
       }
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isPresetGalleryOpen]);
+  }, [isNewTileModalOpen, isPresetGalleryOpen]);
 
   useEffect(() => {
     if (!isPresetGalleryOpen) {
@@ -479,10 +481,6 @@ export function App(): JSX.Element {
     },
     [availableColors]
   );
-
-  const setShape = (shape: TileShape): void => {
-    dispatch({ type: 'set-tile-shape', shape });
-  };
 
   const erasePrimitive = (id: string): void => {
     dispatch({ type: 'erase-primitive', id });
@@ -802,23 +800,28 @@ export function App(): JSX.Element {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [duplicateSelected, flipSelectedArcs, offsetSelected, rotateSelected, selectAllVisible, setTool, toggleSplitSelection]);
 
-  const clearTile = (): void => {
-    if (project.primitives.length === 0) {
-      return;
-    }
-
-    const confirmed = window.confirm(
-      'Clear the current tile and remove all lines/circles/arcs? This can be undone with Undo.'
-    );
-    if (!confirmed) {
-      return;
-    }
-
-    dispatch({ type: 'clear' });
+  const createNewTile = (shape: TileShape): void => {
+    dispatch({
+      type: 'hydrate',
+      state: {
+        ...project,
+        tile: {
+          ...project.tile,
+          shape
+        },
+        primitives: [],
+        history: {
+          past: [],
+          future: []
+        }
+      }
+    });
+    setHiddenColors([]);
     setSelectedPrimitiveIds([]);
     setSplitSelectionPrimitiveId(null);
     setOffsetSession(null);
-    setMessage('Cleared tile.');
+    setIsNewTileModalOpen(false);
+    setMessage(`Started a new ${shape === 'square' ? 'square' : 'hexagonal'} tile.`);
   };
 
   const exportSvg = (): void => {
@@ -942,7 +945,6 @@ export function App(): JSX.Element {
     <main className="app-shell">
       <header className="title-bar">
         <h1>Tile Creator</h1>
-        <p>Create one tile, then repeat it into seamless geometric patterns.</p>
       </header>
 
       <section className="workspace-layout">
@@ -964,7 +966,6 @@ export function App(): JSX.Element {
           splitSelectionArmed={splitSelectionArmed}
           offsetDistance={offsetSession?.draftDistance ?? null}
           showOffsetDistanceEditor={offsetSession !== null}
-          onShapeChange={setShape}
           onToolChange={setTool}
           onColorChange={setColor}
           onStrokeWidthChange={setStrokeWidth}
@@ -1061,15 +1062,6 @@ export function App(): JSX.Element {
               {showPatternPreview ? 'Hide Pattern Preview' : 'Show Pattern Preview'}
             </button>
             <h2>Pattern Size</h2>
-            <label className="checkbox-field">
-              <input
-                data-testid="pattern-bounds-toggle"
-                type="checkbox"
-                checked={showPatternBounds}
-                onChange={(event) => setShowPatternBounds(event.target.checked)}
-              />
-              <span>Show pattern bounds</span>
-            </label>
             <div className="pattern-grid">
               <label className="field pattern-field">
                 <span>Columns</span>
@@ -1105,6 +1097,19 @@ export function App(): JSX.Element {
           </section>
 
           <section className="right-section">
+            <h2>Preview Options</h2>
+            <label className="checkbox-field">
+              <input
+                data-testid="pattern-bounds-toggle"
+                type="checkbox"
+                checked={showPatternBounds}
+                onChange={(event) => setShowPatternBounds(event.target.checked)}
+              />
+              <span>Show pattern bounds</span>
+            </label>
+          </section>
+
+          <section className="right-section">
             <h2>Import / Export</h2>
             <div className="right-actions">
               <button type="button" onClick={exportSvg}>
@@ -1119,8 +1124,8 @@ export function App(): JSX.Element {
               <button type="button" onClick={() => fileInputRef.current?.click()}>
                 Import Project
               </button>
-              <button type="button" onClick={clearTile} disabled={project.primitives.length === 0}>
-                Clear Tile
+              <button type="button" onClick={() => setIsNewTileModalOpen(true)}>
+                New Tile
               </button>
             </div>
             <input
@@ -1187,6 +1192,41 @@ export function App(): JSX.Element {
                     </article>
                   );
                 })}
+              </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {isNewTileModalOpen ? (
+        <div
+          className="gallery-modal-backdrop"
+          role="presentation"
+          onClick={() => setIsNewTileModalOpen(false)}
+        >
+          <section
+            className="gallery-modal tile-shape-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Choose Tile Shape"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="gallery-modal-header">
+              <h2>Choose Tile Shape</h2>
+              <button type="button" onClick={() => setIsNewTileModalOpen(false)}>
+                Close
+              </button>
+            </header>
+
+            <div className="gallery-modal-content tile-shape-modal-content">
+              <p>Start a new tile by choosing whether it should be square or hexagonal.</p>
+              <div className="tile-shape-actions">
+                <button type="button" onClick={() => createNewTile('square')}>
+                  Square
+                </button>
+                <button type="button" onClick={() => createNewTile('hex-pointy')}>
+                  Hexagonal
+                </button>
               </div>
             </div>
           </section>

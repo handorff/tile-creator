@@ -23,7 +23,6 @@ function buildToolbarProps() {
     splitSelectionArmed: false,
     offsetDistance: null,
     showOffsetDistanceEditor: false,
-    onShapeChange: vi.fn(),
     onToolChange: vi.fn(),
     onColorChange: vi.fn(),
     onStrokeWidthChange: vi.fn(),

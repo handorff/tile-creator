@@ -74,6 +74,46 @@ describe('App', () => {
     expect(boundsRect).toHaveAttribute('stroke', '#1f2937');
   });
 
+  it('opens a new tile modal and creates a hexagonal tile', async () => {
+    storeProject({
+      tile: { shape: 'square', size: 120 },
+      primitives: [
+        {
+          id: 'line-1',
+          kind: 'line',
+          a: { x: 0, y: 0 },
+          b: { x: 40, y: 0 },
+          color: '#111111',
+          strokeWidth: 2
+        }
+      ],
+      activeTool: 'line',
+      activeColor: '#111111',
+      activeStrokeWidth: 2,
+      history: {
+        past: [],
+        future: []
+      }
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'New Tile' }));
+
+    expect(screen.getByRole('dialog', { name: 'Choose Tile Shape' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hexagonal' }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Choose Tile Shape' })).not.toBeInTheDocument()
+    );
+
+    const stored = JSON.parse(window.localStorage.getItem('tile-creator-project-v1') ?? '{}');
+    expect(stored.project.tile.shape).toBe('hex-pointy');
+    expect(stored.project.primitives).toHaveLength(0);
+    expect(screen.getByText('Started a new hexagonal tile.')).toBeInTheDocument();
+  });
+
   it('renders animated gif export button', () => {
     render(<App />);
 
