@@ -204,6 +204,42 @@ describe('buildSymmetricOffsets', () => {
     expect(closePairs.length).toBeGreaterThan(0);
   });
 
+  it('splits crossing lines and creates one offset corner in each quadrant', () => {
+    const primitives: Primitive[] = [
+      {
+        id: 'horizontal',
+        kind: 'line',
+        a: { x: -10, y: 0 },
+        b: { x: 10, y: 0 },
+        color: '#111'
+      },
+      {
+        id: 'vertical',
+        kind: 'line',
+        a: { x: 0, y: -10 },
+        b: { x: 0, y: 10 },
+        color: '#111'
+      }
+    ];
+
+    const offsets = buildSymmetricOffsets(primitives, 1);
+    expect(offsets).toHaveLength(8);
+
+    const endpoints = offsets
+      .filter((primitive): primitive is Extract<Primitive, { kind: 'line' }> => primitive.kind === 'line')
+      .flatMap((primitive) => [primitive.a, primitive.b]);
+
+    for (const corner of [
+      { x: -1, y: -1 },
+      { x: 1, y: -1 },
+      { x: 1, y: 1 },
+      { x: -1, y: 1 }
+    ]) {
+      const matches = endpoints.filter((point) => pointDistance(point, corner) < 1e-6);
+      expect(matches).toHaveLength(2);
+    }
+  });
+
   it('offsets closed loops on both sides', () => {
     const primitives: Primitive[] = [
       {
