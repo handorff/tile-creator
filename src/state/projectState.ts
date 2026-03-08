@@ -42,12 +42,12 @@ export const DEFAULT_PATTERN: PatternSize = {
 };
 
 export const DEFAULT_COLORS = [
-  '#2563eb',
-  '#ea580c',
-  '#16a34a',
-  '#db2777',
-  '#9333ea',
-  '#0d9488'
+  '#000000',
+  '#ff595e',
+  '#ffca3a',
+  '#8ac926',
+  '#1982c4',
+  '#6a4c93'
 ];
 
 export const initialProjectState: ProjectState = {
