@@ -362,9 +362,30 @@ export function App(): JSX.Element {
     canSplitSelection &&
     !!selectedSplitPrimitive &&
     splitSelectionPrimitiveId === selectedSplitPrimitive.id;
+  const renderedPrimitives = useMemo(() => {
+    if (!offsetSession) {
+      return project.primitives;
+    }
+
+    const previewDistance = normalizeOffsetDistance(offsetSession.draftDistance, offsetSession.distance);
+    if (previewDistance === offsetSession.distance) {
+      return project.primitives;
+    }
+
+    const previewOffsets = buildSymmetricOffsets(offsetSession.sourceSnapshot, previewDistance, {
+      reuseIds: offsetSession.generatedIds,
+      tile: project.tile
+    });
+    if (previewOffsets.length !== offsetSession.generatedIds.length) {
+      return project.primitives;
+    }
+
+    const previewById = new Map(previewOffsets.map((primitive) => [primitive.id, primitive]));
+    return project.primitives.map((primitive) => previewById.get(primitive.id) ?? primitive);
+  }, [offsetSession, project.primitives, project.tile]);
   const visiblePrimitives = useMemo(
-    () => project.primitives.filter((primitive) => !hiddenColorSet.has(primitive.color)),
-    [hiddenColorSet, project.primitives]
+    () => renderedPrimitives.filter((primitive) => !hiddenColorSet.has(primitive.color)),
+    [hiddenColorSet, renderedPrimitives]
   );
   const historyTimeline = useMemo(() => buildHistoryTimeline(project.history), [project.history]);
 

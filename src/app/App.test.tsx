@@ -252,7 +252,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Offset' }));
 
     await waitFor(() => expect(container.querySelectorAll('.selected-primitive')).toHaveLength(4));
-    expect(screen.getByTestId('offset-distance')).toHaveValue(12);
+    expect(screen.getByTestId('offset-distance')).toHaveValue('12');
 
     const afterCreate = JSON.parse(window.localStorage.getItem('tile-creator-project-v1') ?? '{}');
     expect(afterCreate.project.primitives).toHaveLength(6);
@@ -265,9 +265,29 @@ describe('App', () => {
     expect(createdOffset).toBeTruthy();
 
     fireEvent.change(screen.getByTestId('offset-distance'), { target: { value: '6' } });
+
+    await waitFor(() => {
+      const movedPreview = Array.from(container.querySelectorAll('.selected-primitive')).some((element) => {
+        if (element.tagName.toLowerCase() !== 'line') {
+          return false;
+        }
+
+        return element.getAttribute('y1') === '6' && element.getAttribute('y2') === '6';
+      });
+
+      expect(movedPreview).toBe(true);
+    });
+
+    const beforeCommit = JSON.parse(window.localStorage.getItem('tile-creator-project-v1') ?? '{}');
+    const uncommittedOffset = beforeCommit.project.primitives.find(
+      (primitive: { id: string; kind: string; a?: { y: number } }) =>
+        primitive.kind === 'line' && primitive.a?.y === 6
+    );
+    expect(uncommittedOffset).toBeFalsy();
+
     fireEvent.blur(screen.getByTestId('offset-distance'));
 
-    await waitFor(() => expect(screen.getByTestId('offset-distance')).toHaveValue(6));
+    await waitFor(() => expect(screen.getByTestId('offset-distance')).toHaveValue('6'));
 
     const afterEdit = JSON.parse(window.localStorage.getItem('tile-creator-project-v1') ?? '{}');
     expect(afterEdit.project.primitives).toHaveLength(6);

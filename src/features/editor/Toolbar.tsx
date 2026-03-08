@@ -70,6 +70,9 @@ const toolIcons: Record<Tool, LucideIcon> = {
   erase: Eraser
 };
 const STROKE_OPTIONS = [0.5, 1, 2, 4] as const;
+const MIN_OFFSET_DISTANCE = 0;
+const MAX_OFFSET_DISTANCE = 16;
+const OFFSET_DISTANCE_STEP = 0.5;
 const MIN_EDITOR_ZOOM = 0.5;
 const MAX_EDITOR_ZOOM = 10;
 
@@ -83,6 +86,11 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(true);
   const VisibilityChevron = isVisibilityOpen ? ChevronDown : ChevronRight;
   const HistoryChevron = isHistoryOpen ? ChevronDown : ChevronRight;
+  const offsetDistanceLabel = props.offsetDistance === null
+    ? ''
+    : Number.isInteger(props.offsetDistance)
+      ? props.offsetDistance.toString()
+      : props.offsetDistance.toFixed(1);
 
   return (
     <aside className="toolbar">
@@ -173,12 +181,13 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
         </div>
         {props.showOffsetDistanceEditor && props.offsetDistance !== null ? (
           <label className="field selection-field">
-            Offset distance
+            Offset distance ({offsetDistanceLabel})
             <input
               data-testid="offset-distance"
-              type="number"
-              min={0}
-              step={1}
+              type="range"
+              min={MIN_OFFSET_DISTANCE}
+              max={MAX_OFFSET_DISTANCE}
+              step={OFFSET_DISTANCE_STEP}
               value={props.offsetDistance}
               onChange={(event) => props.onOffsetDistanceDraftChange(Number(event.target.value))}
               onBlur={props.onCommitOffsetDistance}

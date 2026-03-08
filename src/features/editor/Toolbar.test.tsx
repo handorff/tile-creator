@@ -365,8 +365,13 @@ describe('Toolbar', () => {
     );
 
     const input = within(view.container).getByTestId('offset-distance');
-    fireEvent.change(input, { target: { value: '6' } });
-    expect(props.onOffsetDistanceDraftChange).toHaveBeenCalledWith(6);
+    expect(input).toHaveAttribute('type', 'range');
+    expect(input).toHaveAttribute('min', '0');
+    expect(input).toHaveAttribute('max', '16');
+    expect(input).toHaveAttribute('step', '0.5');
+
+    fireEvent.change(input, { target: { value: '6.5' } });
+    expect(props.onOffsetDistanceDraftChange).toHaveBeenCalledWith(6.5);
 
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(props.onCommitOffsetDistance).toHaveBeenCalledTimes(1);
