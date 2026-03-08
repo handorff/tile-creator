@@ -24,6 +24,7 @@ interface ToolbarProps {
   activeTool: Tool;
   activeColor: string | null;
   activeStrokeWidth: number | null;
+  editorZoom: number;
   visibleColors: string[];
   colors: string[];
   canUndo: boolean;
@@ -40,6 +41,7 @@ interface ToolbarProps {
   onToolChange: (tool: Tool) => void;
   onColorChange: (color: string) => void;
   onStrokeWidthChange: (strokeWidth: number) => void;
+  onEditorZoomChange: (zoom: number) => void;
   onColorVisibilityChange: (color: string, visible: boolean) => void;
   onAllColorsVisibilityChange: (visible: boolean) => void;
   onOnlyVisibleColor: (color: string) => void;
@@ -66,6 +68,8 @@ const toolIcons: Record<Tool, LucideIcon> = {
   erase: Eraser
 };
 const STROKE_OPTIONS = [0.5, 1, 2, 4] as const;
+const MIN_EDITOR_ZOOM = 0.5;
+const MAX_EDITOR_ZOOM = 10;
 
 export function Toolbar(props: ToolbarProps): JSX.Element {
   const hasSelection = props.selectedCount > 0;
@@ -108,110 +112,6 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
               </button>
             );
           })}
-        </div>
-      </section>
-
-      <section>
-        <h2>Color</h2>
-        <div className="color-grid">
-          {props.colors.map((color) => (
-            <button
-              key={color}
-              type="button"
-              data-testid={`color-${color}`}
-              aria-label={`Select color ${color}`}
-              className={props.activeColor === color ? 'color active-color' : 'color'}
-              style={{ backgroundColor: color }}
-              onClick={() => props.onColorChange(color)}
-            />
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <h2>Stroke Weight</h2>
-        <div className="button-row stroke-buttons">
-          {STROKE_OPTIONS.map((strokeWidth) => (
-            <button
-              key={strokeWidth}
-              type="button"
-              data-testid={`stroke-width-${strokeWidth}`}
-              className={props.activeStrokeWidth === strokeWidth ? 'active' : undefined}
-              onClick={() => props.onStrokeWidthChange(strokeWidth)}
-            >
-              {strokeWidth}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <h2>Visibility</h2>
-        <div className="visibility-all-controls">
-          <span>All colors</span>
-          <div className="segmented-control" role="group" aria-label="Toggle all colors visibility">
-            <button
-              type="button"
-              data-testid="visibility-all-on"
-              className={allVisible ? 'segmented-button active' : 'segmented-button'}
-              aria-pressed={allVisible}
-              onClick={() => props.onAllColorsVisibilityChange(true)}
-            >
-              On
-            </button>
-            <button
-              type="button"
-              data-testid="visibility-all-off"
-              className={allHidden ? 'segmented-button active' : 'segmented-button'}
-              aria-pressed={allHidden}
-              onClick={() => props.onAllColorsVisibilityChange(false)}
-            >
-              Off
-            </button>
-          </div>
-        </div>
-        <div className="visibility-list">
-          {props.colors.map((color) => (
-            <div key={`visibility-${color}`} className="visibility-item">
-              <span className="visibility-label" aria-hidden="true">
-                <span
-                  className="visibility-swatch"
-                  style={{ backgroundColor: color }}
-                />
-              </span>
-              <div className="visibility-actions">
-                <div className="segmented-control" role="group" aria-label={`Toggle color ${color}`}>
-                  <button
-                    type="button"
-                    data-testid={`visibility-on-${color}`}
-                    className={visibleColors.has(color) ? 'segmented-button active' : 'segmented-button'}
-                    aria-pressed={visibleColors.has(color)}
-                    onClick={() => props.onColorVisibilityChange(color, true)}
-                  >
-                    On
-                  </button>
-                  <button
-                    type="button"
-                    data-testid={`visibility-off-${color}`}
-                    className={!visibleColors.has(color) ? 'segmented-button active' : 'segmented-button'}
-                    aria-pressed={!visibleColors.has(color)}
-                    onClick={() => props.onColorVisibilityChange(color, false)}
-                  >
-                    Off
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  data-testid={`visibility-only-${color}`}
-                  aria-label={`Show only color ${color}`}
-                  className="visibility-only-button"
-                  onClick={() => props.onOnlyVisibleColor(color)}
-                >
-                  Only
-                </button>
-              </div>
-            </div>
-          ))}
         </div>
       </section>
 
@@ -303,6 +203,123 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
             />
           </label>
         ) : null}
+      </section>
+
+      <section>
+        <h2>Color</h2>
+        <div className="color-grid">
+          {props.colors.map((color) => (
+            <button
+              key={color}
+              type="button"
+              data-testid={`color-${color}`}
+              aria-label={`Select color ${color}`}
+              className={props.activeColor === color ? 'color active-color' : 'color'}
+              style={{ backgroundColor: color }}
+              onClick={() => props.onColorChange(color)}
+            />
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h2>Stroke Weight</h2>
+        <div className="button-row stroke-buttons">
+          {STROKE_OPTIONS.map((strokeWidth) => (
+            <button
+              key={strokeWidth}
+              type="button"
+              data-testid={`stroke-width-${strokeWidth}`}
+              className={props.activeStrokeWidth === strokeWidth ? 'active' : undefined}
+              onClick={() => props.onStrokeWidthChange(strokeWidth)}
+            >
+              {strokeWidth}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h2>Visibility</h2>
+        <div className="visibility-all-controls">
+          <span>All colors</span>
+          <div className="segmented-control" role="group" aria-label="Toggle all colors visibility">
+            <button
+              type="button"
+              data-testid="visibility-all-on"
+              className={allVisible ? 'segmented-button active' : 'segmented-button'}
+              aria-pressed={allVisible}
+              onClick={() => props.onAllColorsVisibilityChange(true)}
+            >
+              On
+            </button>
+            <button
+              type="button"
+              data-testid="visibility-all-off"
+              className={allHidden ? 'segmented-button active' : 'segmented-button'}
+              aria-pressed={allHidden}
+              onClick={() => props.onAllColorsVisibilityChange(false)}
+            >
+              Off
+            </button>
+          </div>
+        </div>
+        <div className="visibility-list">
+          {props.colors.map((color) => (
+            <div key={`visibility-${color}`} className="visibility-item">
+              <span className="visibility-label" aria-hidden="true">
+                <span className="visibility-swatch" style={{ backgroundColor: color }} />
+              </span>
+              <div className="visibility-actions">
+                <div className="segmented-control" role="group" aria-label={`Toggle color ${color}`}>
+                  <button
+                    type="button"
+                    data-testid={`visibility-on-${color}`}
+                    className={visibleColors.has(color) ? 'segmented-button active' : 'segmented-button'}
+                    aria-pressed={visibleColors.has(color)}
+                    onClick={() => props.onColorVisibilityChange(color, true)}
+                  >
+                    On
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`visibility-off-${color}`}
+                    className={!visibleColors.has(color) ? 'segmented-button active' : 'segmented-button'}
+                    aria-pressed={!visibleColors.has(color)}
+                    onClick={() => props.onColorVisibilityChange(color, false)}
+                  >
+                    Off
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  data-testid={`visibility-only-${color}`}
+                  aria-label={`Show only color ${color}`}
+                  className="visibility-only-button"
+                  onClick={() => props.onOnlyVisibleColor(color)}
+                >
+                  Only
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h2>Editor Zoom</h2>
+        <label className="field zoom-field">
+          Editor Zoom ({props.editorZoom.toFixed(1)}x)
+          <input
+            data-testid="editor-zoom"
+            type="range"
+            min={MIN_EDITOR_ZOOM}
+            max={MAX_EDITOR_ZOOM}
+            step={0.1}
+            value={props.editorZoom}
+            onChange={(event) => props.onEditorZoomChange(Number(event.target.value))}
+          />
+        </label>
       </section>
 
       <section>

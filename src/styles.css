@@ -131,7 +131,7 @@ button.active {
 }
 
 .selection-buttons {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .stroke-buttons {
@@ -387,15 +387,6 @@ button.active {
   background: #ffffff;
 }
 
-.hint {
-  margin: 0;
-  padding: 0.6rem 0.9rem;
-  border-top: 1px solid var(--border);
-  color: #64748b;
-  font-size: 0.82rem;
-  background: #fcfcfd;
-}
-
 .right-panel {
   border-left: 1px solid var(--border);
   background: var(--surface);
@@ -419,7 +410,29 @@ button.active {
 
 .pattern-grid {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.55rem;
+  align-items: center;
+}
+
+.pattern-controls {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.pattern-controls h2 {
+  margin-bottom: 0;
+}
+
+.pattern-field {
+  grid-template-columns: auto minmax(0, 4.5rem);
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pattern-field input {
+  width: 100%;
+  min-width: 0;
 }
 
 .right-actions {

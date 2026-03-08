@@ -8,6 +8,7 @@ function buildToolbarProps() {
     activeTool: 'line' as const,
     activeColor: '#111',
     activeStrokeWidth: 2,
+    editorZoom: 1,
     visibleColors: ['#111', '#222'],
     colors: ['#111', '#222'],
     canUndo: false,
@@ -26,6 +27,7 @@ function buildToolbarProps() {
     onToolChange: vi.fn(),
     onColorChange: vi.fn(),
     onStrokeWidthChange: vi.fn(),
+    onEditorZoomChange: vi.fn(),
     onColorVisibilityChange: vi.fn(),
     onAllColorsVisibilityChange: vi.fn(),
     onOnlyVisibleColor: vi.fn(),
@@ -162,6 +164,42 @@ describe('Toolbar', () => {
     expect(within(view.container).getByText('All colors')).toBeInTheDocument();
     expect(within(view.container).queryByText('#111')).toBeNull();
     expect(within(view.container).queryByText('#222')).toBeNull();
+  });
+
+  it('renders the editor zoom control below visibility and updates it', () => {
+    const props = buildToolbarProps();
+    const view = render(<Toolbar {...props} />);
+
+    const visibilityHeading = within(view.container).getByRole('heading', { name: 'Visibility' });
+    const zoomHeading = within(view.container).getByRole('heading', { name: 'Editor Zoom' });
+    const historyHeading = within(view.container).getByRole('heading', { name: 'History' });
+
+    expect(visibilityHeading.compareDocumentPosition(zoomHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(zoomHeading.compareDocumentPosition(historyHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+
+    fireEvent.change(within(view.container).getByTestId('editor-zoom'), { target: { value: '2.5' } });
+
+    expect(props.onEditorZoomChange).toHaveBeenCalledWith(2.5);
+  });
+
+  it('renders the selection section directly below tools', () => {
+    const props = buildToolbarProps();
+    const view = render(<Toolbar {...props} />);
+
+    const toolsHeading = within(view.container).getByRole('heading', { name: 'Tools' });
+    const selectionHeading = within(view.container).getByRole('heading', { name: 'Selection' });
+    const colorHeading = within(view.container).getByRole('heading', { name: 'Color' });
+
+    expect(toolsHeading.compareDocumentPosition(selectionHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(selectionHeading.compareDocumentPosition(colorHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
   });
 
   it('disables undo/redo buttons from props', () => {

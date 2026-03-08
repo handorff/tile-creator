@@ -1236,12 +1236,6 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
 
         <path d={tilePath} className="tile-outline" />
       </svg>
-      <p className="hint">
-        Scroll to zoom. Right-click-drag pans any time. Click-drag to marquee select enclosed
-        primitives, and Shift+click adds or removes selection. To split, select one line/circle and
-        use Split (X). Lines split in one click; circles split in two clicks. Arc tool flow: click
-        center, click start, click end. Hold Shift while placing end for the major arc.
-      </p>
     </section>
   );
 }

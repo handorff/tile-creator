@@ -950,6 +950,7 @@ export function App(): JSX.Element {
           activeTool={project.activeTool}
           activeColor={highlightedStyle.color}
           activeStrokeWidth={highlightedStyle.strokeWidth}
+          editorZoom={editorZoom}
           visibleColors={availableColors.filter((color) => !hiddenColorSet.has(color))}
           colors={availableColors}
           canUndo={project.history.past.length > 0}
@@ -966,6 +967,7 @@ export function App(): JSX.Element {
           onToolChange={setTool}
           onColorChange={setColor}
           onStrokeWidthChange={setStrokeWidth}
+          onEditorZoomChange={(nextZoom) => setEditorZoom(clampEditorZoom(nextZoom))}
           onColorVisibilityChange={setColorVisibility}
           onAllColorsVisibilityChange={setAllColorsVisibility}
           onOnlyVisibleColor={setOnlyVisibleColor}
@@ -1049,10 +1051,13 @@ export function App(): JSX.Element {
           </section>
 
           <section className="right-section pattern-controls">
+            <button type="button" onClick={() => setShowPatternPreview((current) => !current)}>
+              {showPatternPreview ? 'Hide Pattern Preview' : 'Show Pattern Preview'}
+            </button>
             <h2>Pattern Size</h2>
             <div className="pattern-grid">
-              <label className="field">
-                Columns
+              <label className="field pattern-field">
+                <span>Columns</span>
                 <input
                   data-testid="pattern-columns"
                   type="number"
@@ -1066,8 +1071,8 @@ export function App(): JSX.Element {
                   }
                 />
               </label>
-              <label className="field">
-                Rows
+              <label className="field pattern-field">
+                <span>Rows</span>
                 <input
                   data-testid="pattern-rows"
                   type="number"
@@ -1081,21 +1086,6 @@ export function App(): JSX.Element {
                   }
                 />
               </label>
-              <label className="field zoom-field">
-                Editor Zoom ({editorZoom.toFixed(1)}x)
-                <input
-                  data-testid="editor-zoom"
-                  type="range"
-                  min={MIN_EDITOR_ZOOM}
-                  max={MAX_EDITOR_ZOOM}
-                  step={0.1}
-                  value={editorZoom}
-                  onChange={(event) => setEditorZoom(clampEditorZoom(Number(event.target.value)))}
-                />
-              </label>
-              <button type="button" onClick={() => setShowPatternPreview((current) => !current)}>
-                {showPatternPreview ? 'Hide Pattern Preview' : 'Show Pattern Preview'}
-              </button>
             </div>
           </section>
 
