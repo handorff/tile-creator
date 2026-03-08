@@ -74,6 +74,82 @@ describe('App', () => {
     expect(boundsRect).toHaveAttribute('stroke', '#1f2937');
   });
 
+  it('renders the preview zoom control below pattern options and updates the preview viewBox', () => {
+    render(<App />);
+
+    const optionsHeading = screen.getByRole('heading', { name: 'Pattern options' });
+    const zoomHeading = screen.getByRole('heading', { name: 'Preview Zoom' });
+    const exportHeading = screen.getByRole('heading', { name: 'Export' });
+
+    expect(optionsHeading.compareDocumentPosition(zoomHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+    expect(zoomHeading.compareDocumentPosition(exportHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    );
+
+    const preview = screen.getByTestId('tiling-preview');
+    const initialViewBox = preview.getAttribute('viewBox');
+
+    fireEvent.change(screen.getByTestId('pattern-preview-zoom'), { target: { value: '2' } });
+
+    expect(screen.getByText('2.0x')).toBeInTheDocument();
+    expect(preview.getAttribute('viewBox')).not.toBe(initialViewBox);
+  });
+
+  it('allows panning the pattern preview by dragging the canvas', async () => {
+    render(<App />);
+
+    const preview = screen.getByTestId('tiling-preview');
+    Object.defineProperty(preview, 'getBoundingClientRect', {
+      configurable: true,
+      value: vi.fn(() => ({
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        right: 400,
+        bottom: 300,
+        width: 400,
+        height: 300,
+        toJSON: () => ({})
+      }))
+    });
+
+    const initialViewBox = preview.getAttribute('viewBox');
+
+    fireEvent.pointerDown(preview, {
+      clientX: 120,
+      clientY: 100,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+
+    await waitFor(() => expect(preview).toHaveClass('panning'));
+
+    fireEvent.pointerMove(preview, {
+      clientX: 180,
+      clientY: 140,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+
+    await waitFor(() => expect(preview.getAttribute('viewBox')).not.toBe(initialViewBox));
+
+    fireEvent.pointerUp(preview, {
+      clientX: 180,
+      clientY: 140,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+  });
+
   it('opens a new tile modal and creates a hexagonal tile', async () => {
     storeProject({
       tile: { shape: 'square', size: 120 },

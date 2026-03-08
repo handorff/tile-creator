@@ -139,6 +139,16 @@ button.active {
   margin: 0;
 }
 
+.zoom-header {
+  margin-bottom: 0.4rem;
+}
+
+.zoom-value {
+  font-size: 0.8rem;
+  color: #334155;
+  font-variant-numeric: tabular-nums;
+}
+
 .section-toggle {
   padding: 0.1rem;
   border: 0;
@@ -426,6 +436,15 @@ button.active {
   flex: 1;
   min-height: 0;
   background: #ffffff;
+}
+
+.preview-canvas {
+  cursor: grab;
+  touch-action: none;
+}
+
+.preview-canvas.panning {
+  cursor: grabbing;
 }
 
 .right-panel {

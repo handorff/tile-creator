@@ -46,6 +46,8 @@ interface OffsetSession {
 
 const MIN_EDITOR_ZOOM = 0.5;
 const MAX_EDITOR_ZOOM = 10;
+const MIN_PREVIEW_ZOOM = 0.5;
+const MAX_PREVIEW_ZOOM = 10;
 const MIN_EDITOR_PANE = 0.3;
 const MAX_EDITOR_PANE = 0.7;
 
@@ -61,6 +63,13 @@ function clampEditorZoom(value: number): number {
     return 1;
   }
   return Math.min(MAX_EDITOR_ZOOM, Math.max(MIN_EDITOR_ZOOM, value));
+}
+
+function clampPreviewZoom(value: number): number {
+  if (Number.isNaN(value)) {
+    return 1;
+  }
+  return Math.min(MAX_PREVIEW_ZOOM, Math.max(MIN_PREVIEW_ZOOM, value));
 }
 
 function clampEditorPane(value: number): number {
@@ -192,6 +201,7 @@ export function App(): JSX.Element {
   const [pattern, setPattern] = useState<PatternSize>(initial.pattern);
   const [hiddenColors, setHiddenColors] = useState<string[]>([]);
   const [editorZoom, setEditorZoom] = useState<number>(1);
+  const [previewZoom, setPreviewZoom] = useState<number>(1);
   const [selectedPrimitiveIds, setSelectedPrimitiveIds] = useState<string[]>([]);
   const [splitSelectionPrimitiveId, setSplitSelectionPrimitiveId] = useState<string | null>(null);
   const [offsetSession, setOffsetSession] = useState<OffsetSession | null>(null);
@@ -1062,6 +1072,7 @@ export function App(): JSX.Element {
                     tile={project.tile}
                     primitives={visiblePrimitives}
                     pattern={pattern}
+                    zoom={previewZoom}
                     showPatternBounds={showPatternBounds}
                   />
                 </div>
@@ -1121,6 +1132,27 @@ export function App(): JSX.Element {
               />
               <span>Draw pattern bounds</span>
             </label>
+          </section>
+
+          <section className="right-section">
+            <div className="section-header">
+              <h2 id="pattern-preview-zoom-heading">Preview Zoom</h2>
+              <span className="zoom-value" aria-live="polite">
+                {previewZoom.toFixed(1)}x
+              </span>
+            </div>
+            <div className="field zoom-field">
+              <input
+                data-testid="pattern-preview-zoom"
+                type="range"
+                min={MIN_PREVIEW_ZOOM}
+                max={MAX_PREVIEW_ZOOM}
+                step={0.1}
+                value={previewZoom}
+                aria-labelledby="pattern-preview-zoom-heading"
+                onChange={(event) => setPreviewZoom(clampPreviewZoom(Number(event.target.value)))}
+              />
+            </div>
           </section>
 
           <section className="right-section">

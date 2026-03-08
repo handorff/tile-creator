@@ -324,9 +324,13 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
       </section>
 
       <section>
-        <h2>Editor Zoom</h2>
-        <label className="field zoom-field">
-          Editor Zoom ({props.editorZoom.toFixed(1)}x)
+        <div className="section-header zoom-header">
+          <h2 id="editor-zoom-heading">Editor Zoom</h2>
+          <span className="zoom-value" aria-live="polite">
+            {props.editorZoom.toFixed(1)}x
+          </span>
+        </div>
+        <div className="field zoom-field">
           <input
             data-testid="editor-zoom"
             type="range"
@@ -334,9 +338,10 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
             max={MAX_EDITOR_ZOOM}
             step={0.1}
             value={props.editorZoom}
+            aria-labelledby="editor-zoom-heading"
             onChange={(event) => props.onEditorZoomChange(Number(event.target.value))}
           />
-        </label>
+        </div>
       </section>
 
       <section>
