@@ -198,7 +198,6 @@ export function App(): JSX.Element {
   const [lastOffsetDistance, setLastOffsetDistance] = useState<number>(
     defaultOffsetDistanceForTile(initial.project.tile.size)
   );
-  const [message, setMessage] = useState<string>('');
   const [isExportingGif, setIsExportingGif] = useState<boolean>(false);
   const [loadingPresetId, setLoadingPresetId] = useState<string | null>(null);
   const [isPresetGalleryOpen, setIsPresetGalleryOpen] = useState<boolean>(false);
@@ -570,7 +569,6 @@ export function App(): JSX.Element {
     });
 
     if (offsets.length === 0) {
-      setMessage('Could not offset the current selection.');
       return;
     }
 
@@ -637,7 +635,6 @@ export function App(): JSX.Element {
             }
           : current
       );
-      setMessage('That offset distance would change the number of generated shapes.');
       return;
     }
 
@@ -821,19 +818,16 @@ export function App(): JSX.Element {
     setSplitSelectionPrimitiveId(null);
     setOffsetSession(null);
     setIsNewTileModalOpen(false);
-    setMessage('');
   };
 
   const exportSvg = (): void => {
     const svg = buildTiledSvg(project, { pattern, showPatternBounds });
     downloadText('tiling-pattern.svg', svg, 'image/svg+xml');
-    setMessage('Exported tiled SVG.');
   };
 
   const exportProjectJson = (): void => {
     const json = serializeProject(project, pattern);
     downloadText('tile-project.json', json, 'application/json');
-    setMessage('Exported project JSON.');
   };
 
   const exportAnimatedGif = async (): Promise<void> => {
@@ -842,14 +836,12 @@ export function App(): JSX.Element {
     }
 
     setIsExportingGif(true);
-    setMessage('Exporting animated GIF...');
 
     try {
       const gif = await buildAnimatedGif(project);
       downloadBlob('tile-history.gif', gif);
-      setMessage('Exported animated GIF.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not export animated GIF.');
+    } catch {
+      return;
     } finally {
       setIsExportingGif(false);
     }
@@ -868,9 +860,8 @@ export function App(): JSX.Element {
       setPattern(loaded.pattern);
       setSplitSelectionPrimitiveId(null);
       setOffsetSession(null);
-      setMessage('Imported project JSON.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not import project file.');
+    } catch {
+      return;
     } finally {
       event.target.value = '';
     }
@@ -882,7 +873,6 @@ export function App(): JSX.Element {
     }
 
     setLoadingPresetId(preset.id);
-    setMessage(`Loading ${preset.name}...`);
 
     try {
       const loaded = presetProjects[preset.id] ?? (await fetchPresetProject(preset));
@@ -894,9 +884,8 @@ export function App(): JSX.Element {
       setSplitSelectionPrimitiveId(null);
       setOffsetSession(null);
       setIsPresetGalleryOpen(false);
-      setMessage(`Loaded ${preset.name}.`);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : `Could not load ${preset.name}.`);
+    } catch {
+      return;
     } finally {
       setLoadingPresetId(null);
     }
@@ -1132,8 +1121,6 @@ export function App(): JSX.Element {
               onChange={importProjectJson}
             />
           </section>
-
-          {message ? <p className="status-message">{message}</p> : null}
         </aside>
       </section>
 

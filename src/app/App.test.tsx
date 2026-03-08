@@ -111,7 +111,7 @@ describe('App', () => {
     const stored = JSON.parse(window.localStorage.getItem('tile-creator-project-v1') ?? '{}');
     expect(stored.project.tile.shape).toBe('hex-pointy');
     expect(stored.project.primitives).toHaveLength(0);
-    expect(screen.queryByText('Started a new hexagonal tile.')).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Choose Tile Shape' })).not.toBeInTheDocument();
   });
 
   it('renders animated gif export button', () => {
@@ -126,7 +126,7 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'Open Gallery' })).toBeInTheDocument();
   });
 
-  it('disables gif export button while exporting and shows success message', async () => {
+  it('disables gif export button while exporting and re-enables it after success', async () => {
     let resolveExport: ((blob: Blob) => void) | undefined;
     buildAnimatedGifMock.mockReturnValue(
       new Promise<Blob>((resolve) => {
@@ -140,16 +140,14 @@ describe('App', () => {
     fireEvent.click(exportButton);
 
     expect(exportButton).toBeDisabled();
-    expect(screen.getByText('Exporting animated GIF...')).toBeInTheDocument();
 
     resolveExport?.(new Blob([new Uint8Array([1, 2, 3])], { type: 'image/gif' }));
 
     await waitFor(() => expect(exportButton).not.toBeDisabled());
     expect(downloadBlobMock).toHaveBeenCalledWith('tile-history.gif', expect.any(Blob));
-    expect(screen.getByText('Exported animated GIF.')).toBeInTheDocument();
   });
 
-  it('shows gif export failure message and re-enables button', async () => {
+  it('re-enables gif export button when export fails', async () => {
     buildAnimatedGifMock.mockRejectedValue(new Error('GIF export failed.'));
 
     render(<App />);
@@ -159,7 +157,6 @@ describe('App', () => {
 
     await waitFor(() => expect(exportButton).not.toBeDisabled());
     expect(downloadBlobMock).not.toHaveBeenCalled();
-    expect(screen.getByText('GIF export failed.')).toBeInTheDocument();
   });
 
   it('selects only visible colors with Command+A', async () => {
