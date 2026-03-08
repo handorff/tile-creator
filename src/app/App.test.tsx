@@ -62,6 +62,18 @@ describe('App', () => {
     expect(screen.getByRole('separator', { name: 'Resize editor and preview panes' })).toBeInTheDocument();
   });
 
+  it('toggles the pattern bounds rectangle in the preview', () => {
+    const { container } = render(<App />);
+
+    expect(container.querySelector('.preview-canvas .pattern-bounds')).toBeNull();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Show pattern bounds' }));
+
+    const boundsRect = container.querySelector('.preview-canvas .pattern-bounds');
+    expect(boundsRect).not.toBeNull();
+    expect(boundsRect).toHaveAttribute('stroke', '#1f2937');
+  });
+
   it('renders animated gif export button', () => {
     render(<App />);
 

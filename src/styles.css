@@ -424,6 +424,17 @@ button.active {
   margin-bottom: 0;
 }
 
+.checkbox-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.86rem;
+}
+
+.checkbox-field input {
+  margin: 0;
+}
+
 .pattern-field {
   grid-template-columns: auto minmax(0, 4.5rem);
   align-items: center;

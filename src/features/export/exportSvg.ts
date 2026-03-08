@@ -1,8 +1,10 @@
 import {
   arcPathD,
+  getPatternBounds,
   getTilePolygon,
   isClockwiseMinorArc,
   normalizeArc,
+  PATTERN_BOUNDS_STROKE,
   periodicNeighborOffsets,
   tileBasisVectors,
   translatePoints
@@ -777,26 +779,7 @@ function boundsForPattern(
   tile: TileConfig,
   options: ExportOptions
 ): { minX: number; minY: number; width: number; height: number } {
-  const base = getTilePolygon(tile);
-
-  let minX = Number.POSITIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-
-  for (let row = 0; row < options.pattern.rows; row += 1) {
-    for (let col = 0; col < options.pattern.columns; col += 1) {
-      const offset = getCellOffset(tile, col, row);
-      const moved = translatePoints(base, offset);
-      for (const point of moved) {
-        minX = Math.min(minX, point.x);
-        minY = Math.min(minY, point.y);
-        maxX = Math.max(maxX, point.x);
-        maxY = Math.max(maxY, point.y);
-      }
-    }
-  }
-
+  const { minX, minY, maxX, maxY } = getPatternBounds(tile, options.pattern);
   const margin = tile.size * 0.2;
   return boundsForPoints(
     [
@@ -846,6 +829,7 @@ export function buildTiledSvg(projectState: ProjectState, options: ExportOptions
   const tilePolygon = getTilePolygon(projectState.tile);
   const neighborOffsets = periodicNeighborOffsets(projectState.tile);
   const bounds = boundsForPattern(projectState.tile, options);
+  const patternBounds = getPatternBounds(projectState.tile, options.pattern);
   const renderedFragments: RenderFragment[] = [];
 
   for (let row = 0; row < options.pattern.rows; row += 1) {
@@ -873,11 +857,15 @@ export function buildTiledSvg(projectState: ProjectState, options: ExportOptions
   const background = options.background
     ? `<rect x="${bounds.minX}" y="${bounds.minY}" width="${bounds.width}" height="${bounds.height}" fill="${options.background}" />`
     : '';
+  const patternBoundsRect = options.showPatternBounds
+    ? `<rect class="pattern-bounds" x="${patternBounds.minX}" y="${patternBounds.minY}" width="${patternBounds.maxX - patternBounds.minX}" height="${patternBounds.maxY - patternBounds.minY}" fill="none" stroke="${PATTERN_BOUNDS_STROKE}" stroke-width="2" />`
+    : '';
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="${bounds.minX} ${bounds.minY} ${bounds.width} ${bounds.height}">
 ${background}
 ${optimizedFragments.map((fragment) => fragmentSvg(fragment)).join('')}
+${patternBoundsRect}
 </svg>`;
 }
 

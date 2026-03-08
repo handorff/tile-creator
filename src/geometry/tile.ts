@@ -1,4 +1,6 @@
-import type { Point, TileConfig } from '../types/model';
+import type { PatternSize, Point, TileConfig } from '../types/model';
+
+export const PATTERN_BOUNDS_STROKE = '#1f2937';
 
 export function getTilePolygon(config: TileConfig): Point[] {
   if (config.shape === 'square') {
@@ -54,6 +56,39 @@ export function tileBasisVectors(config: TileConfig): { u: Point; v: Point } {
     u: { x: sqrt3 * r, y: 0 },
     v: { x: (sqrt3 * r) / 2, y: (3 * r) / 2 }
   };
+}
+
+export function getPatternBounds(config: TileConfig, pattern: PatternSize): {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+} {
+  const base = getTilePolygon(config);
+  const { u, v } = tileBasisVectors(config);
+
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  for (let row = 0; row < pattern.rows; row += 1) {
+    for (let col = 0; col < pattern.columns; col += 1) {
+      const offset = {
+        x: col * u.x + row * v.x,
+        y: col * u.y + row * v.y
+      };
+      const moved = translatePoints(base, offset);
+      for (const point of moved) {
+        minX = Math.min(minX, point.x);
+        minY = Math.min(minY, point.y);
+        maxX = Math.max(maxX, point.x);
+        maxY = Math.max(maxY, point.y);
+      }
+    }
+  }
+
+  return { minX, minY, maxX, maxY };
 }
 
 export function periodicNeighborOffsets(config: TileConfig): Point[] {

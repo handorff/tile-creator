@@ -210,6 +210,7 @@ export function App(): JSX.Element {
   const [editorPane, setEditorPane] = useState<number>(0.55);
   const [resizingPane, setResizingPane] = useState<boolean>(false);
   const [showPatternPreview, setShowPatternPreview] = useState<boolean>(true);
+  const [showPatternBounds, setShowPatternBounds] = useState<boolean>(false);
   const availableColors = useMemo(
     () => Array.from(new Set([...DEFAULT_COLORS, ...project.primitives.map((primitive) => primitive.color)])),
     [project.primitives]
@@ -821,7 +822,7 @@ export function App(): JSX.Element {
   };
 
   const exportSvg = (): void => {
-    const svg = buildTiledSvg(project, { pattern });
+    const svg = buildTiledSvg(project, { pattern, showPatternBounds });
     downloadText('tiling-pattern.svg', svg, 'image/svg+xml');
     setMessage('Exported tiled SVG.');
   };
@@ -1035,7 +1036,12 @@ export function App(): JSX.Element {
                 />
 
                 <div className="center-pane">
-                  <TilingPreview tile={project.tile} primitives={visiblePrimitives} pattern={pattern} />
+                  <TilingPreview
+                    tile={project.tile}
+                    primitives={visiblePrimitives}
+                    pattern={pattern}
+                    showPatternBounds={showPatternBounds}
+                  />
                 </div>
               </>
             ) : null}
@@ -1055,6 +1061,15 @@ export function App(): JSX.Element {
               {showPatternPreview ? 'Hide Pattern Preview' : 'Show Pattern Preview'}
             </button>
             <h2>Pattern Size</h2>
+            <label className="checkbox-field">
+              <input
+                data-testid="pattern-bounds-toggle"
+                type="checkbox"
+                checked={showPatternBounds}
+                onChange={(event) => setShowPatternBounds(event.target.checked)}
+              />
+              <span>Show pattern bounds</span>
+            </label>
             <div className="pattern-grid">
               <label className="field pattern-field">
                 <span>Columns</span>

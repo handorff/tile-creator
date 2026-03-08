@@ -151,6 +151,31 @@ describe('buildTiledSvg', () => {
     expect(countLinearPathElements(svg)).toBe(3);
   });
 
+  it('optionally includes a pattern bounds rectangle in tiled export', () => {
+    const project = {
+      ...initialProjectState,
+      primitives: [
+        {
+          id: 'line-1',
+          kind: 'line' as const,
+          a: { x: -20, y: 0 },
+          b: { x: 20, y: 0 },
+          color: '#111'
+        }
+      ]
+    };
+
+    const withoutBounds = buildTiledSvg(project, { pattern: { columns: 2, rows: 2 } });
+    const withBounds = buildTiledSvg(project, {
+      pattern: { columns: 2, rows: 2 },
+      showPatternBounds: true
+    });
+
+    expect(withoutBounds).not.toContain('class="pattern-bounds"');
+    expect(withBounds).toContain('class="pattern-bounds"');
+    expect(withBounds).toContain('stroke="#1f2937"');
+  });
+
   it('exports circles directly when fully visible in a tile', () => {
     const project = {
       ...initialProjectState,

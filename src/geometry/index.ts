@@ -1,5 +1,7 @@
 export {
   getTilePolygon,
+  getPatternBounds,
+  PATTERN_BOUNDS_STROKE,
   getSeedSnapPoints,
   tileBasisVectors,
   periodicNeighborOffsets,

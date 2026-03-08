@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
 import {
+  getPatternBounds,
+  PATTERN_BOUNDS_STROKE,
   getTilePolygon,
   periodicNeighborOffsets,
   tileBasisVectors,
@@ -13,6 +15,7 @@ interface TilingPreviewProps {
   tile: TileConfig;
   primitives: Primitive[];
   pattern: PatternSize;
+  showPatternBounds: boolean;
 }
 
 function getCellOffset(tile: TileConfig, col: number, row: number): { x: number; y: number } {
@@ -33,26 +36,7 @@ function computeViewBox(tile: TileConfig, pattern: PatternSize): {
   width: number;
   height: number;
 } {
-  const base = getTilePolygon(tile);
-
-  let minX = Number.POSITIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-
-  for (let row = 0; row < pattern.rows; row += 1) {
-    for (let col = 0; col < pattern.columns; col += 1) {
-      const offset = getCellOffset(tile, col, row);
-      const moved = translatePoints(base, offset);
-      for (const point of moved) {
-        minX = Math.min(minX, point.x);
-        minY = Math.min(minY, point.y);
-        maxX = Math.max(maxX, point.x);
-        maxY = Math.max(maxY, point.y);
-      }
-    }
-  }
-
+  const { minX, minY, maxX, maxY } = getPatternBounds(tile, pattern);
   const margin = tile.size * 0.3;
   return {
     x: minX - margin,
@@ -64,6 +48,7 @@ function computeViewBox(tile: TileConfig, pattern: PatternSize): {
 
 export function TilingPreview(props: TilingPreviewProps): JSX.Element {
   const tilePolygon = useMemo(() => getTilePolygon(props.tile), [props.tile]);
+  const bounds = useMemo(() => getPatternBounds(props.tile, props.pattern), [props.pattern, props.tile]);
   const viewBox = useMemo(
     () => computeViewBox(props.tile, props.pattern),
     [props.pattern, props.tile]
@@ -115,6 +100,18 @@ export function TilingPreview(props: TilingPreviewProps): JSX.Element {
             );
           })
         )}
+        {props.showPatternBounds ? (
+          <rect
+            className="pattern-bounds"
+            x={bounds.minX}
+            y={bounds.minY}
+            width={bounds.maxX - bounds.minX}
+            height={bounds.maxY - bounds.minY}
+            fill="none"
+            stroke={PATTERN_BOUNDS_STROKE}
+            strokeWidth={2}
+          />
+        ) : null}
       </svg>
     </section>
   );

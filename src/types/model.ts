@@ -71,6 +71,7 @@ export interface ProjectState {
 export interface ExportOptions {
   pattern: PatternSize;
   background?: string;
+  showPatternBounds?: boolean;
 }
 
 export interface PersistedProject {
