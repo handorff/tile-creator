@@ -120,6 +120,30 @@ button.active {
   color: #334155;
 }
 
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+}
+
+.section-header h2 {
+  margin: 0;
+}
+
+.section-toggle {
+  padding: 0.1rem;
+  border: 0;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.section-toggle:hover {
+  background: transparent;
+}
+
 .button-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -165,14 +189,15 @@ button.active {
   margin-bottom: 0.45rem;
 }
 
-.history-header h2 {
-  margin: 0;
-}
-
 .history-controls {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
+}
+
+.history-toggle {
+  flex: 1;
+  min-width: 0;
 }
 
 .history-controls button {

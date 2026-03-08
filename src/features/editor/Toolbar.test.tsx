@@ -165,6 +165,25 @@ describe('Toolbar', () => {
     expect(within(view.container).queryByText('#222')).toBeNull();
   });
 
+  it('collapses and expands the visibility section', () => {
+    const props = buildToolbarProps();
+    const view = render(<Toolbar {...props} />);
+
+    const toggle = within(view.container).getByRole('button', { name: 'Visibility' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(within(view.container).getByText('All colors')).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(within(view.container).queryByText('All colors')).toBeNull();
+
+    fireEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(within(view.container).getByText('All colors')).toBeInTheDocument();
+  });
+
   it('renders the editor zoom control below visibility and updates it', () => {
     const props = buildToolbarProps();
     const view = render(<Toolbar {...props} />);
@@ -235,6 +254,24 @@ describe('Toolbar', () => {
       'aria-current',
       'step'
     );
+  });
+
+  it('collapses history while keeping undo and redo visible', () => {
+    const props = buildToolbarProps();
+    const view = render(<Toolbar {...props} canUndo canRedo />);
+
+    const toggle = within(view.container).getByRole('button', { name: 'History' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(within(view.container).getByTestId('history-step-0')).toBeInTheDocument();
+    expect(within(view.container).getByRole('button', { name: 'Undo' })).toBeInTheDocument();
+    expect(within(view.container).getByRole('button', { name: 'Redo' })).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(within(view.container).queryByTestId('history-step-0')).toBeNull();
+    expect(within(view.container).getByRole('button', { name: 'Undo' })).toBeInTheDocument();
+    expect(within(view.container).getByRole('button', { name: 'Redo' })).toBeInTheDocument();
   });
 
   it('shows future timeline rows and allows jumping to them', () => {

@@ -821,7 +821,7 @@ export function App(): JSX.Element {
     setSplitSelectionPrimitiveId(null);
     setOffsetSession(null);
     setIsNewTileModalOpen(false);
-    setMessage(`Started a new ${shape === 'square' ? 'square' : 'hexagonal'} tile.`);
+    setMessage('');
   };
 
   const exportSvg = (): void => {
@@ -945,6 +945,9 @@ export function App(): JSX.Element {
     <main className="app-shell">
       <header className="title-bar">
         <h1>Tile Creator</h1>
+        <button type="button" onClick={() => setIsPresetGalleryOpen(true)}>
+          Open Gallery
+        </button>
       </header>
 
       <section className="workspace-layout">
@@ -1050,13 +1053,6 @@ export function App(): JSX.Element {
         </section>
 
         <aside className="right-panel">
-          <section className="right-section">
-            <h2>Example Presets</h2>
-            <button type="button" onClick={() => setIsPresetGalleryOpen(true)}>
-              Open Gallery
-            </button>
-          </section>
-
           <section className="right-section pattern-controls">
             <button type="button" onClick={() => setShowPatternPreview((current) => !current)}>
               {showPatternPreview ? 'Hide Pattern Preview' : 'Show Pattern Preview'}
@@ -1097,7 +1093,7 @@ export function App(): JSX.Element {
           </section>
 
           <section className="right-section">
-            <h2>Preview Options</h2>
+            <h2>Pattern options</h2>
             <label className="checkbox-field">
               <input
                 data-testid="pattern-bounds-toggle"
@@ -1105,7 +1101,7 @@ export function App(): JSX.Element {
                 checked={showPatternBounds}
                 onChange={(event) => setShowPatternBounds(event.target.checked)}
               />
-              <span>Show pattern bounds</span>
+              <span>Draw pattern bounds</span>
             </label>
           </section>
 

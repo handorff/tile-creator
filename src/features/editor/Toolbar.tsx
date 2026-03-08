@@ -1,5 +1,7 @@
 import {
   BetweenVerticalStart,
+  ChevronDown,
+  ChevronRight,
   Circle as CircleIcon,
   CircleOff,
   Copy,
@@ -15,6 +17,7 @@ import {
   Slash,
   type LucideIcon
 } from 'lucide-react';
+import { useState } from 'react';
 import type { HistoryTimelineItem } from './historyTimeline';
 import type { TileShape, Tool } from '../../types/model';
 import { SELECTION_SHORTCUTS, TOOL_SHORTCUTS, formatShortcutKey } from './shortcuts';
@@ -76,6 +79,10 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
   const visibleColors = new Set(props.visibleColors);
   const allVisible = props.colors.length > 0 && props.colors.every((color) => visibleColors.has(color));
   const allHidden = props.colors.length > 0 && props.colors.every((color) => !visibleColors.has(color));
+  const [isVisibilityOpen, setIsVisibilityOpen] = useState<boolean>(true);
+  const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(true);
+  const VisibilityChevron = isVisibilityOpen ? ChevronDown : ChevronRight;
+  const HistoryChevron = isHistoryOpen ? ChevronDown : ChevronRight;
 
   return (
     <aside className="toolbar">
@@ -225,70 +232,86 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
       </section>
 
       <section>
-        <h2>Visibility</h2>
-        <div className="visibility-all-controls">
-          <span>All colors</span>
-          <div className="segmented-control" role="group" aria-label="Toggle all colors visibility">
-            <button
-              type="button"
-              data-testid="visibility-all-on"
-              className={allVisible ? 'segmented-button active' : 'segmented-button'}
-              aria-pressed={allVisible}
-              onClick={() => props.onAllColorsVisibilityChange(true)}
-            >
-              On
-            </button>
-            <button
-              type="button"
-              data-testid="visibility-all-off"
-              className={allHidden ? 'segmented-button active' : 'segmented-button'}
-              aria-pressed={allHidden}
-              onClick={() => props.onAllColorsVisibilityChange(false)}
-            >
-              Off
-            </button>
-          </div>
+        <div className="section-header">
+          <h2>Visibility</h2>
+          <button
+            type="button"
+            className="section-toggle"
+            aria-label="Visibility"
+            aria-expanded={isVisibilityOpen}
+            aria-controls="toolbar-visibility-panel"
+            onClick={() => setIsVisibilityOpen((current) => !current)}
+          >
+            <VisibilityChevron className="toolbar-icon" aria-hidden="true" />
+          </button>
         </div>
-        <div className="visibility-list">
-          {props.colors.map((color) => (
-            <div key={`visibility-${color}`} className="visibility-item">
-              <span className="visibility-label" aria-hidden="true">
-                <span className="visibility-swatch" style={{ backgroundColor: color }} />
-              </span>
-              <div className="visibility-actions">
-                <div className="segmented-control" role="group" aria-label={`Toggle color ${color}`}>
-                  <button
-                    type="button"
-                    data-testid={`visibility-on-${color}`}
-                    className={visibleColors.has(color) ? 'segmented-button active' : 'segmented-button'}
-                    aria-pressed={visibleColors.has(color)}
-                    onClick={() => props.onColorVisibilityChange(color, true)}
-                  >
-                    On
-                  </button>
-                  <button
-                    type="button"
-                    data-testid={`visibility-off-${color}`}
-                    className={!visibleColors.has(color) ? 'segmented-button active' : 'segmented-button'}
-                    aria-pressed={!visibleColors.has(color)}
-                    onClick={() => props.onColorVisibilityChange(color, false)}
-                  >
-                    Off
-                  </button>
-                </div>
+        {isVisibilityOpen ? (
+          <div id="toolbar-visibility-panel">
+            <div className="visibility-all-controls">
+              <span>All colors</span>
+              <div className="segmented-control" role="group" aria-label="Toggle all colors visibility">
                 <button
                   type="button"
-                  data-testid={`visibility-only-${color}`}
-                  aria-label={`Show only color ${color}`}
-                  className="visibility-only-button"
-                  onClick={() => props.onOnlyVisibleColor(color)}
+                  data-testid="visibility-all-on"
+                  className={allVisible ? 'segmented-button active' : 'segmented-button'}
+                  aria-pressed={allVisible}
+                  onClick={() => props.onAllColorsVisibilityChange(true)}
                 >
-                  Only
+                  On
+                </button>
+                <button
+                  type="button"
+                  data-testid="visibility-all-off"
+                  className={allHidden ? 'segmented-button active' : 'segmented-button'}
+                  aria-pressed={allHidden}
+                  onClick={() => props.onAllColorsVisibilityChange(false)}
+                >
+                  Off
                 </button>
               </div>
             </div>
-          ))}
-        </div>
+            <div className="visibility-list">
+              {props.colors.map((color) => (
+                <div key={`visibility-${color}`} className="visibility-item">
+                  <span className="visibility-label" aria-hidden="true">
+                    <span className="visibility-swatch" style={{ backgroundColor: color }} />
+                  </span>
+                  <div className="visibility-actions">
+                    <div className="segmented-control" role="group" aria-label={`Toggle color ${color}`}>
+                      <button
+                        type="button"
+                        data-testid={`visibility-on-${color}`}
+                        className={visibleColors.has(color) ? 'segmented-button active' : 'segmented-button'}
+                        aria-pressed={visibleColors.has(color)}
+                        onClick={() => props.onColorVisibilityChange(color, true)}
+                      >
+                        On
+                      </button>
+                      <button
+                        type="button"
+                        data-testid={`visibility-off-${color}`}
+                        className={!visibleColors.has(color) ? 'segmented-button active' : 'segmented-button'}
+                        aria-pressed={!visibleColors.has(color)}
+                        onClick={() => props.onColorVisibilityChange(color, false)}
+                      >
+                        Off
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      data-testid={`visibility-only-${color}`}
+                      aria-label={`Show only color ${color}`}
+                      className="visibility-only-button"
+                      onClick={() => props.onOnlyVisibleColor(color)}
+                    >
+                      Only
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section>
@@ -309,7 +332,19 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
 
       <section>
         <div className="history-header">
-          <h2>History</h2>
+          <div className="section-header history-toggle">
+            <h2>History</h2>
+            <button
+              type="button"
+              className="section-toggle"
+              aria-label="History"
+              aria-expanded={isHistoryOpen}
+              aria-controls="toolbar-history-panel"
+              onClick={() => setIsHistoryOpen((current) => !current)}
+            >
+              <HistoryChevron className="toolbar-icon" aria-hidden="true" />
+            </button>
+          </div>
           <div className="history-controls">
             <button
               type="button"
@@ -333,20 +368,22 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
             </button>
           </div>
         </div>
-        <div className="history-timeline" role="list" aria-label="History timeline">
-          {props.historyTimeline.map((item) => (
-            <button
-              key={item.pastLength}
-              type="button"
-              data-testid={`history-step-${item.pastLength}`}
-              className={`history-timeline-item${item.isCurrent ? ' current' : ''}${item.isFuture ? ' future' : ''}`}
-              aria-current={item.isCurrent ? 'step' : undefined}
-              onClick={() => props.onHistoryJump(item.pastLength)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        {isHistoryOpen ? (
+          <div id="toolbar-history-panel" className="history-timeline" role="list" aria-label="History timeline">
+            {props.historyTimeline.map((item) => (
+              <button
+                key={item.pastLength}
+                type="button"
+                data-testid={`history-step-${item.pastLength}`}
+                className={`history-timeline-item${item.isCurrent ? ' current' : ''}${item.isFuture ? ' future' : ''}`}
+                aria-current={item.isCurrent ? 'step' : undefined}
+                onClick={() => props.onHistoryJump(item.pastLength)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </section>
     </aside>
   );

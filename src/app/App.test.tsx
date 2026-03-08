@@ -67,7 +67,7 @@ describe('App', () => {
 
     expect(container.querySelector('.preview-canvas .pattern-bounds')).toBeNull();
 
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Show pattern bounds' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Draw pattern bounds' }));
 
     const boundsRect = container.querySelector('.preview-canvas .pattern-bounds');
     expect(boundsRect).not.toBeNull();
@@ -111,7 +111,7 @@ describe('App', () => {
     const stored = JSON.parse(window.localStorage.getItem('tile-creator-project-v1') ?? '{}');
     expect(stored.project.tile.shape).toBe('hex-pointy');
     expect(stored.project.primitives).toHaveLength(0);
-    expect(screen.getByText('Started a new hexagonal tile.')).toBeInTheDocument();
+    expect(screen.queryByText('Started a new hexagonal tile.')).toBeNull();
   });
 
   it('renders animated gif export button', () => {
