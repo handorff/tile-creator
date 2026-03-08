@@ -74,6 +74,14 @@ button.active {
   gap: 1rem;
 }
 
+.title-bar-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
 .title-bar h1 {
   margin: 0;
   font-size: 0.95rem;
@@ -264,6 +272,7 @@ button.active {
   align-items: center;
   justify-content: space-between;
   gap: 0.55rem;
+  margin-top: 0.2rem;
   margin-bottom: 0.45rem;
   font-size: 0.82rem;
 }

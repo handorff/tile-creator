@@ -934,9 +934,17 @@ export function App(): JSX.Element {
     <main className="app-shell">
       <header className="title-bar">
         <h1>Tile Creator</h1>
-        <button type="button" onClick={() => setIsPresetGalleryOpen(true)}>
-          Open Gallery
-        </button>
+        <div className="title-bar-actions">
+          <button type="button" onClick={() => setIsNewTileModalOpen(true)}>
+            New Tile
+          </button>
+          <button type="button" onClick={() => fileInputRef.current?.click()}>
+            Import Project
+          </button>
+          <button type="button" onClick={() => setIsPresetGalleryOpen(true)}>
+            Open Gallery
+          </button>
+        </div>
       </header>
 
       <section className="workspace-layout">
@@ -1095,7 +1103,7 @@ export function App(): JSX.Element {
           </section>
 
           <section className="right-section">
-            <h2>Import / Export</h2>
+            <h2>Export</h2>
             <div className="right-actions">
               <button type="button" onClick={exportSvg}>
                 Export SVG
@@ -1105,12 +1113,6 @@ export function App(): JSX.Element {
               </button>
               <button type="button" onClick={() => void exportAnimatedGif()} disabled={isExportingGif}>
                 Export Animated GIF
-              </button>
-              <button type="button" onClick={() => fileInputRef.current?.click()}>
-                Import Project
-              </button>
-              <button type="button" onClick={() => setIsNewTileModalOpen(true)}>
-                New Tile
               </button>
             </div>
             <input
