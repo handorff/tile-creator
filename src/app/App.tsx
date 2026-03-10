@@ -252,6 +252,7 @@ export function App(): JSX.Element {
   const [resizingPane, setResizingPane] = useState<boolean>(false);
   const [showPatternPreview, setShowPatternPreview] = useState<boolean>(true);
   const [showPatternBounds, setShowPatternBounds] = useState<boolean>(false);
+  const [showNeighborTilesInEditor, setShowNeighborTilesInEditor] = useState<boolean>(false);
   const availableColors = useMemo(
     () => Array.from(new Set([...DEFAULT_COLORS, ...project.primitives.map((primitive) => primitive.color)])),
     [project.primitives]
@@ -1246,6 +1247,7 @@ export function App(): JSX.Element {
                 tile={project.tile}
                 primitives={visiblePrimitives}
                 selectedIds={selectedPrimitiveIds}
+                showNeighborTiles={showNeighborTilesInEditor}
                 activeTool={project.activeTool}
                 activeColor={project.activeColor}
                 activeStrokeWidth={project.activeStrokeWidth}
@@ -1339,6 +1341,15 @@ export function App(): JSX.Element {
                 onChange={(event) => setShowPatternBounds(event.target.checked)}
               />
               <span>Draw pattern bounds</span>
+            </label>
+            <label className="checkbox-field">
+              <input
+                data-testid="editor-neighbor-tiles-toggle"
+                type="checkbox"
+                checked={showNeighborTilesInEditor}
+                onChange={(event) => setShowNeighborTilesInEditor(event.target.checked)}
+              />
+              <span>Show neighboring tiles in editor</span>
             </label>
           </section>
 

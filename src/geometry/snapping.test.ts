@@ -188,4 +188,47 @@ describe('snapping', () => {
       true
     );
   });
+
+  it('includes circle intersections with the tile boundary as snap targets', () => {
+    const points = gatherSnapPoints(
+      [
+        {
+          id: 'circle-1',
+          kind: 'circle',
+          center: { x: 0, y: 0 },
+          radius: 10,
+          color: '#111'
+        }
+      ],
+      { shape: 'square', size: 8 }
+    );
+
+    expect(points).toContainEqual({ x: 6, y: 8 });
+    expect(points).toContainEqual({ x: -6, y: 8 });
+    expect(points).toContainEqual({ x: 6, y: -8 });
+    expect(points).toContainEqual({ x: -6, y: -8 });
+  });
+
+  it('includes only in-sweep arc intersections with the tile boundary as snap targets', () => {
+    const points = gatherSnapPoints(
+      [
+        {
+          id: 'arc-1',
+          kind: 'arc',
+          center: { x: 0, y: 0 },
+          start: { x: 10, y: 0 },
+          end: { x: 0, y: 10 },
+          clockwise: true,
+          largeArc: false,
+          color: '#111'
+        }
+      ],
+      { shape: 'square', size: 8 }
+    );
+
+    expect(points).toContainEqual({ x: 8, y: 6 });
+    expect(points).toContainEqual({ x: 6, y: 8 });
+    expect(points).not.toContainEqual({ x: -8, y: 6 });
+    expect(points).not.toContainEqual({ x: 6, y: -8 });
+  });
 });

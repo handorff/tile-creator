@@ -635,6 +635,19 @@ button.active {
   vector-effect: non-scaling-stroke;
 }
 
+.editor-neighbor-cell {
+  pointer-events: none;
+}
+
+.editor-neighbor-primitive {
+  opacity: 0.28;
+}
+
+.editor-neighbor-outline {
+  stroke: #64748b;
+  stroke-opacity: 0.55;
+}
+
 .preview-outline {
   stroke-opacity: 0.2;
   stroke-width: 1;

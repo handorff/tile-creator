@@ -35,6 +35,7 @@ describe('EditorCanvas selection', () => {
         tile={{ shape: 'square', size: 100 }}
         primitives={primitives}
         selectedIds={[]}
+        showNeighborTiles={false}
         activeTool="select"
         activeColor="#111111"
         activeStrokeWidth={2}
@@ -125,6 +126,7 @@ describe('EditorCanvas selection', () => {
         tile={{ shape: 'square', size: 100 }}
         primitives={primitives}
         selectedIds={[]}
+        showNeighborTiles={false}
         activeTool="select"
         activeColor="#111111"
         activeStrokeWidth={2}
@@ -181,6 +183,192 @@ describe('EditorCanvas selection', () => {
     await waitFor(() => expect(onSelectionChange).toHaveBeenLastCalledWith(['line-1']));
   });
 
+  it('renders neighboring tile artwork only when enabled', () => {
+    const props = {
+      tile: { shape: 'square', size: 100 } as const,
+      primitives,
+      selectedIds: [],
+      activeTool: 'select' as const,
+      activeColor: '#111111',
+      activeStrokeWidth: 2,
+      zoom: 1,
+      onZoomChange: vi.fn(),
+      onAddPrimitive: vi.fn(),
+      onUpdatePrimitive: vi.fn(),
+      splitSelectionPrimitiveId: null,
+      onSplitLine: vi.fn(),
+      onSplitCircle: vi.fn(),
+      onErasePrimitive: vi.fn(),
+      onErasePrimitives: vi.fn(),
+      onSelectionChange: vi.fn()
+    };
+    const { container, rerender } = render(
+      <EditorCanvas
+        {...props}
+        showNeighborTiles={false}
+      />
+    );
+
+    expect(container.querySelectorAll('.editor-neighbor-cell')).toHaveLength(0);
+
+    rerender(
+      <EditorCanvas
+        {...props}
+        showNeighborTiles
+      />
+    );
+
+    expect(container.querySelectorAll('.editor-neighbor-cell')).toHaveLength(8);
+    expect(container.querySelectorAll('.editor-neighbor-primitive').length).toBeGreaterThan(0);
+    expect(container.querySelector('path.tile-outline:not(.editor-neighbor-outline)')).not.toBeNull();
+  });
+
+  it('does not select neighbor artwork when neighboring tiles are visible', async () => {
+    if (!window.PointerEvent) {
+      Object.defineProperty(window, 'PointerEvent', {
+        value: MouseEvent,
+        writable: true
+      });
+    }
+
+    const onSelectionChange = vi.fn();
+    const { container } = render(
+      <EditorCanvas
+        tile={{ shape: 'square', size: 100 }}
+        primitives={[
+          {
+            id: 'line-1',
+            kind: 'line',
+            a: { x: 20, y: 20 },
+            b: { x: 80, y: 20 },
+            color: '#111111'
+          }
+        ]}
+        selectedIds={[]}
+        showNeighborTiles
+        activeTool="select"
+        activeColor="#111111"
+        activeStrokeWidth={2}
+        zoom={1}
+        onZoomChange={vi.fn()}
+        onAddPrimitive={vi.fn()}
+        onUpdatePrimitive={vi.fn()}
+        splitSelectionPrimitiveId={null}
+        onSplitLine={vi.fn()}
+        onSplitCircle={vi.fn()}
+        onErasePrimitive={vi.fn()}
+        onErasePrimitives={vi.fn()}
+        onSelectionChange={onSelectionChange}
+      />
+    );
+
+    const canvas = container.querySelector('svg');
+    expect(canvas).not.toBeNull();
+    if (!canvas) {
+      return;
+    }
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 700, 700));
+
+    fireEvent.pointerDown(canvas, {
+      clientX: 600,
+      clientY: 370,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+    fireEvent.pointerUp(canvas, {
+      clientX: 600,
+      clientY: 370,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+
+    await waitFor(() => expect(onSelectionChange).toHaveBeenLastCalledWith([]));
+    expect(container.querySelectorAll('.selected-primitive')).toHaveLength(0);
+  });
+
+  it('snaps drawing to neighboring tile points when neighboring tiles are visible', async () => {
+    if (!window.PointerEvent) {
+      Object.defineProperty(window, 'PointerEvent', {
+        value: MouseEvent,
+        writable: true
+      });
+    }
+
+    const onAddPrimitive = vi.fn();
+    const { container } = render(
+      <EditorCanvas
+        tile={{ shape: 'square', size: 100 }}
+        primitives={[
+          {
+            id: 'line-1',
+            kind: 'line',
+            a: { x: 20, y: 20 },
+            b: { x: 80, y: 20 },
+            color: '#111111'
+          }
+        ]}
+        selectedIds={[]}
+        showNeighborTiles
+        activeTool="line"
+        activeColor="#111111"
+        activeStrokeWidth={2}
+        zoom={1}
+        onZoomChange={vi.fn()}
+        onAddPrimitive={onAddPrimitive}
+        onUpdatePrimitive={vi.fn()}
+        splitSelectionPrimitiveId={null}
+        onSplitLine={vi.fn()}
+        onSplitCircle={vi.fn()}
+        onErasePrimitive={vi.fn()}
+        onErasePrimitives={vi.fn()}
+        onSelectionChange={vi.fn()}
+      />
+    );
+
+    const canvas = container.querySelector('svg');
+    expect(canvas).not.toBeNull();
+    if (!canvas) {
+      return;
+    }
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 700, 700));
+
+    fireEvent.pointerDown(canvas, {
+      clientX: 572,
+      clientY: 372,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+    fireEvent.pointerMove(canvas, {
+      clientX: 610,
+      clientY: 410,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+    fireEvent.pointerUp(canvas, {
+      clientX: 610,
+      clientY: 410,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+
+    await waitFor(() => expect(onAddPrimitive).toHaveBeenCalledTimes(1));
+    expect(onAddPrimitive).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'line',
+        a: { x: 220, y: 20 }
+      })
+    );
+  });
+
   it('splits the armed selected line when clicking a split point', async () => {
     if (!window.PointerEvent) {
       Object.defineProperty(window, 'PointerEvent', {
@@ -195,6 +383,7 @@ describe('EditorCanvas selection', () => {
         tile={{ shape: 'square', size: 100 }}
         primitives={primitives}
         selectedIds={[]}
+        showNeighborTiles={false}
         activeTool="select"
         activeColor="#111111"
         activeStrokeWidth={2}
@@ -245,6 +434,7 @@ describe('EditorCanvas selection', () => {
         tile={{ shape: 'square', size: 100 }}
         primitives={primitives}
         selectedIds={[]}
+        showNeighborTiles={false}
         activeTool="select"
         activeColor="#111111"
         activeStrokeWidth={2}
@@ -316,6 +506,7 @@ describe('EditorCanvas selection', () => {
           }
         ]}
         selectedIds={[]}
+        showNeighborTiles={false}
         activeTool="select"
         activeColor="#111111"
         activeStrokeWidth={2}
@@ -395,6 +586,7 @@ describe('EditorCanvas selection', () => {
         tile={{ shape: 'square', size: 100 }}
         primitives={[]}
         selectedIds={[]}
+        showNeighborTiles={false}
         activeTool="arc"
         activeColor="#111111"
         activeStrokeWidth={2}
@@ -490,6 +682,7 @@ describe('EditorCanvas selection', () => {
         tile={{ shape: 'square', size: 100 }}
         primitives={[]}
         selectedIds={[]}
+        showNeighborTiles={false}
         activeTool="arc"
         activeColor="#111111"
         activeStrokeWidth={2}

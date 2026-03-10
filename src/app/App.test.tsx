@@ -74,6 +74,17 @@ describe('App', () => {
     expect(boundsRect).toHaveAttribute('stroke', '#1f2937');
   });
 
+  it('keeps editor neighbors hidden by default and toggles them on demand', () => {
+    const { container } = render(<App />);
+
+    expect(screen.getByRole('checkbox', { name: 'Show neighboring tiles in editor' })).not.toBeChecked();
+    expect(container.querySelectorAll('.editor-neighbor-cell')).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Show neighboring tiles in editor' }));
+
+    expect(container.querySelectorAll('.editor-neighbor-cell')).toHaveLength(8);
+  });
+
   it('renders the preview zoom control below pattern options and updates the preview viewBox', () => {
     render(<App />);
 

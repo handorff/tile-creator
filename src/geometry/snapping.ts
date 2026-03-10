@@ -2,7 +2,7 @@ import type { Point, Primitive, TileConfig } from '../types/model';
 import { getSeedSnapPoints, getTilePolygon } from './tile';
 import { intersections } from './intersections';
 import { clamp, cross, distance, dot, pointKey, subtract } from '../utils/math';
-import { arcMidpoint, normalizeArc } from './arc';
+import { arcMidpoint, arcRadius, isPointOnArcSweep, normalizeArc } from './arc';
 
 export interface SnapContext {
   points: Point[];
@@ -12,6 +12,94 @@ export interface SnapContext {
 export interface SnapSegment {
   a: Point;
   b: Point;
+}
+
+function lineCircleIntersections(
+  line: SnapSegment,
+  circle: { center: Point; radius: number }
+): Point[] {
+  const d = subtract(line.b, line.a);
+  const f = subtract(line.a, circle.center);
+
+  const a = dot(d, d);
+  const b = 2 * dot(f, d);
+  const c = dot(f, f) - circle.radius * circle.radius;
+  const discriminant = b * b - 4 * a * c;
+
+  if (discriminant < -1e-6) {
+    return [];
+  }
+
+  if (Math.abs(discriminant) < 1e-6) {
+    const t = -b / (2 * a);
+    if (t >= -1e-6 && t <= 1 + 1e-6) {
+      return [
+        {
+          x: line.a.x + d.x * t,
+          y: line.a.y + d.y * t
+        }
+      ];
+    }
+
+    return [];
+  }
+
+  const sqrtDiscriminant = Math.sqrt(Math.max(0, discriminant));
+  const t1 = (-b + sqrtDiscriminant) / (2 * a);
+  const t2 = (-b - sqrtDiscriminant) / (2 * a);
+  const points: Point[] = [];
+
+  if (t1 >= -1e-6 && t1 <= 1 + 1e-6) {
+    points.push({
+      x: line.a.x + d.x * t1,
+      y: line.a.y + d.y * t1
+    });
+  }
+
+  if (t2 >= -1e-6 && t2 <= 1 + 1e-6) {
+    points.push({
+      x: line.a.x + d.x * t2,
+      y: line.a.y + d.y * t2
+    });
+  }
+
+  return points;
+}
+
+function curveTileBoundaryIntersections(primitives: Primitive[], tile: TileConfig): Point[] {
+  const polygon = getTilePolygon(tile);
+  const tileEdges: SnapSegment[] = polygon.map((point, index) => ({
+    a: point,
+    b: polygon[(index + 1) % polygon.length]
+  }));
+  const points: Point[] = [];
+
+  for (const primitive of primitives) {
+    if (primitive.kind === 'circle') {
+      for (const edge of tileEdges) {
+        points.push(
+          ...lineCircleIntersections(edge, {
+            center: primitive.center,
+            radius: primitive.radius
+          })
+        );
+      }
+      continue;
+    }
+
+    if (primitive.kind === 'arc') {
+      const normalized = normalizeArc(primitive);
+      for (const edge of tileEdges) {
+        const candidates = lineCircleIntersections(edge, {
+          center: normalized.center,
+          radius: arcRadius(normalized)
+        });
+        points.push(...candidates.filter((point) => isPointOnArcSweep(point, normalized, 1e-4)));
+      }
+    }
+  }
+
+  return points;
 }
 
 export function gatherSnapPoints(primitives: Primitive[], tile: TileConfig): Point[] {
@@ -33,6 +121,7 @@ export function gatherSnapPoints(primitives: Primitive[], tile: TileConfig): Poi
   }
 
   points.push(...intersections(primitives));
+  points.push(...curveTileBoundaryIntersections(primitives, tile));
   points.push(...getSeedSnapPoints(tile));
 
   const dedup = new Map<string, Point>();

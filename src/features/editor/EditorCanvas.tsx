@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import {
   arcPathD,
@@ -17,12 +17,13 @@ import {
   periodicNeighborOffsets,
   projectPointToCircle,
   polygonBounds,
+  translatePoints,
   translatePrimitive
 } from '../../geometry';
 import { getPrimitiveStrokeWidth } from '../../state/projectState';
 import type { Point, Primitive, TileConfig, Tool } from '../../types/model';
 import { createId } from '../../utils/ids';
-import { clamp, distance, dot, subtract } from '../../utils/math';
+import { clamp, distance, dot, pointKey, subtract } from '../../utils/math';
 import { PrimitiveSvg } from './PrimitiveSvg';
 import { mapClientPointToWorld, renderedViewBoxLayout } from './coordinates';
 
@@ -30,6 +31,7 @@ interface EditorCanvasProps {
   tile: TileConfig;
   primitives: Primitive[];
   selectedIds: string[];
+  showNeighborTiles: boolean;
   activeTool: Tool;
   activeColor: string;
   activeStrokeWidth: number;
@@ -173,6 +175,65 @@ function polygonPath(points: Point[]): string {
 
   const [first, ...rest] = points;
   return `M ${first.x} ${first.y} ${rest.map((point) => `L ${point.x} ${point.y}`).join(' ')} Z`;
+}
+
+function clipPathId(prefix: string, index: number): string {
+  return `${prefix}-clip-${index}`;
+}
+
+function segmentKey(segment: { a: Point; b: Point }): string {
+  const aKey = pointKey(segment.a);
+  const bKey = pointKey(segment.b);
+  return aKey < bKey ? `${aKey}|${bKey}` : `${bKey}|${aKey}`;
+}
+
+function translatedSnapPoints(points: Point[], offsets: Point[]): Point[] {
+  const dedup = new Map<string, Point>();
+
+  for (const point of points) {
+    dedup.set(pointKey(point), point);
+  }
+
+  for (const offset of offsets) {
+    for (const point of points) {
+      const translated = {
+        x: point.x + offset.x,
+        y: point.y + offset.y
+      };
+      dedup.set(pointKey(translated), translated);
+    }
+  }
+
+  return [...dedup.values()];
+}
+
+function translatedSnapSegments(
+  segments: Array<{ a: Point; b: Point }>,
+  offsets: Point[]
+): Array<{ a: Point; b: Point }> {
+  const dedup = new Map<string, { a: Point; b: Point }>();
+
+  for (const segment of segments) {
+    dedup.set(segmentKey(segment), segment);
+  }
+
+  for (const offset of offsets) {
+    for (const segment of segments) {
+      const translated = {
+        a: {
+          x: segment.a.x + offset.x,
+          y: segment.a.y + offset.y
+        },
+        b: {
+          x: segment.b.x + offset.x,
+          y: segment.b.y + offset.y
+        }
+      };
+      dedup.set(segmentKey(translated), translated);
+    }
+  }
+
+  return [...dedup.values()];
 }
 
 function circleRadiusHandle(circle: Extract<Primitive, { kind: 'circle' }>): Point {
@@ -365,6 +426,7 @@ function sameSelectionIds(a: string[], b: string[]): boolean {
 export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
   const { onZoomChange, zoom, onSelectionChange, onErasePrimitive, onErasePrimitives } = props;
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const clipPrefix = useId().replace(/:/g, '');
   const [draft, setDraft] = useState<DraftState>(null);
   const [drawing, setDrawing] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -387,6 +449,14 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
   const tilePolygon = useMemo(() => getTilePolygon(props.tile), [props.tile]);
   const tilePath = useMemo(() => polygonPath(tilePolygon), [tilePolygon]);
   const periodicOffsets = useMemo(() => periodicNeighborOffsets(props.tile), [props.tile]);
+  const neighborTileOffsets = useMemo(
+    () => periodicOffsets.filter((offset) => offset.x !== 0 || offset.y !== 0),
+    [periodicOffsets]
+  );
+  const neighborTilePaths = useMemo(
+    () => neighborTileOffsets.map((offset) => polygonPath(translatePoints(tilePolygon, offset))),
+    [neighborTileOffsets, tilePolygon]
+  );
 
   useEffect(() => {
     setSelectedIds((current) => (sameSelectionIds(current, props.selectedIds) ? current : props.selectedIds));
@@ -518,13 +588,23 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
     });
   }, [splitTargetPrimitive]);
 
+  const buildSnapPoints = (primitives: Primitive[]): Point[] => {
+    const points = gatherSnapPoints(primitives, props.tile);
+    return props.showNeighborTiles ? translatedSnapPoints(points, neighborTileOffsets) : points;
+  };
+
+  const buildSnapSegments = (primitives: Primitive[]): Array<{ a: Point; b: Point }> => {
+    const segments = gatherSnapSegments(primitives, props.tile);
+    return props.showNeighborTiles ? translatedSnapSegments(segments, neighborTileOffsets) : segments;
+  };
+
   const snapPoints = useMemo(
-    () => gatherSnapPoints(renderedPrimitives, props.tile),
-    [renderedPrimitives, props.tile]
+    () => buildSnapPoints(renderedPrimitives),
+    [renderedPrimitives, props.tile, props.showNeighborTiles, neighborTileOffsets]
   );
   const snapSegments = useMemo(
-    () => gatherSnapSegments(renderedPrimitives, props.tile),
-    [renderedPrimitives, props.tile]
+    () => buildSnapSegments(renderedPrimitives),
+    [renderedPrimitives, props.tile, props.showNeighborTiles, neighborTileOffsets]
   );
 
   const snapTolerance = props.tile.size * 0.08;
@@ -760,14 +840,11 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
           (current.handle === 'line-a' || current.handle === 'line-b')
         ) {
           const anchor = current.handle === 'line-a' ? current.preview.b : current.preview.a;
-          const snapPointsForLineEdit = gatherSnapPoints(
-            props.primitives.filter((primitive) => primitive.id !== current.primitiveId),
-            props.tile
+          const snapCandidates = props.primitives.filter(
+            (primitive) => primitive.id !== current.primitiveId
           );
-          const snapSegmentsForLineEdit = gatherSnapSegments(
-            props.primitives.filter((primitive) => primitive.id !== current.primitiveId),
-            props.tile
-          );
+          const snapPointsForLineEdit = buildSnapPoints(snapCandidates);
+          const snapSegmentsForLineEdit = buildSnapSegments(snapCandidates);
           const snappedPoint = resolveLineEndWithPoints(
             anchor,
             raw,
@@ -960,12 +1037,52 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
         onPointerCancel={handlePointerUp}
       >
         <defs>
-          <clipPath id="tile-clip-editor">
+          <clipPath id={clipPathId(clipPrefix, 0)}>
             <path d={tilePath} />
           </clipPath>
+          {props.showNeighborTiles
+            ? neighborTilePaths.map((path, index) => (
+                <clipPath
+                  key={clipPathId(clipPrefix, index + 1)}
+                  id={clipPathId(clipPrefix, index + 1)}
+                >
+                  <path d={path} />
+                </clipPath>
+              ))
+            : null}
         </defs>
 
-        <g clipPath="url(#tile-clip-editor)">
+        {props.showNeighborTiles
+          ? neighborTileOffsets.map((tileOffset, tileIndex) => (
+              <g
+                key={`neighbor-cell-${tileIndex}`}
+                className="editor-neighbor-cell"
+                clipPath={`url(#${clipPathId(clipPrefix, tileIndex + 1)})`}
+              >
+                {periodicOffsets.flatMap((periodicOffset, offsetIndex) =>
+                  renderedPrimitives.map((primitive) => {
+                    const moved = translatePrimitive(primitive, {
+                      x: tileOffset.x + periodicOffset.x,
+                      y: tileOffset.y + periodicOffset.y
+                    });
+                    return (
+                      <PrimitiveSvg
+                        key={`${primitive.id}-${tileIndex}-${offsetIndex}`}
+                        primitive={moved}
+                        className="editor-neighbor-primitive"
+                      />
+                    );
+                  })
+                )}
+                <path
+                  d={neighborTilePaths[tileIndex]}
+                  className="tile-outline editor-neighbor-outline"
+                />
+              </g>
+            ))
+          : null}
+
+        <g clipPath={`url(#${clipPathId(clipPrefix, 0)})`}>
           {periodicOffsets.flatMap((offset, idx) =>
             renderedPrimitives.map((primitive) => {
               const moved = translatePrimitive(primitive, offset);
@@ -979,7 +1096,7 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
           )}
         </g>
 
-        <g clipPath="url(#tile-clip-editor)">
+        <g clipPath={`url(#${clipPathId(clipPrefix, 0)})`}>
           {snapPoints.map((point, idx) => (
             <circle
               key={`snap-${idx}`}
