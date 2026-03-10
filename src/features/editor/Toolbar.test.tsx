@@ -20,9 +20,12 @@ function buildToolbarProps() {
     canSplitSelection: true,
     canFlipArcSelection: false,
     canOffsetSelection: true,
+    canRadialSplitSelection: false,
     splitSelectionArmed: false,
     offsetDistance: null,
     showOffsetDistanceEditor: false,
+    radialSplitCount: null,
+    showRadialSplitCountEditor: false,
     onToolChange: vi.fn(),
     onColorChange: vi.fn(),
     onStrokeWidthChange: vi.fn(),
@@ -34,9 +37,13 @@ function buildToolbarProps() {
     onSplitSelection: vi.fn(),
     onFlipArcSelection: vi.fn(),
     onOffsetSelection: vi.fn(),
+    onRadialSplitSelection: vi.fn(),
     onOffsetDistanceDraftChange: vi.fn(),
     onCommitOffsetDistance: vi.fn(),
     onCancelOffsetDistance: vi.fn(),
+    onRadialSplitCountDraftChange: vi.fn(),
+    onCommitRadialSplitCount: vi.fn(),
+    onCancelRadialSplitCount: vi.fn(),
     onRotateSelectionCcw: vi.fn(),
     onRotateSelectionCw: vi.fn(),
     onUndo: vi.fn(),
@@ -323,6 +330,10 @@ describe('Toolbar', () => {
       'title',
       'Offset selected primitives (O)'
     );
+    expect(within(view.container).getByRole('button', { name: 'Radial Split' })).toHaveAttribute(
+      'title',
+      'Split selected circle into radial parts (P)'
+    );
   });
 
   it('disables split when selection cannot be split', () => {
@@ -354,6 +365,24 @@ describe('Toolbar', () => {
     expect(enabledProps.onFlipArcSelection).toHaveBeenCalledTimes(1);
   });
 
+  it('enables radial split button only when a single circle is selected', () => {
+    const props = buildToolbarProps();
+    const disabledView = render(<Toolbar {...props} />);
+    const radialDisabled = within(disabledView.container).getByRole('button', { name: 'Radial Split' });
+    expect(radialDisabled).toBeDisabled();
+    fireEvent.click(radialDisabled);
+    expect(props.onRadialSplitSelection).not.toHaveBeenCalled();
+
+    disabledView.unmount();
+
+    const enabledProps = buildToolbarProps();
+    const enabledView = render(<Toolbar {...enabledProps} canRadialSplitSelection />);
+    const radialEnabled = within(enabledView.container).getByRole('button', { name: 'Radial Split' });
+    expect(radialEnabled).not.toBeDisabled();
+    fireEvent.click(radialEnabled);
+    expect(enabledProps.onRadialSplitSelection).toHaveBeenCalledTimes(1);
+  });
+
   it('renders and controls the offset distance editor when active', () => {
     const props = buildToolbarProps();
     const view = render(
@@ -378,5 +407,31 @@ describe('Toolbar', () => {
 
     fireEvent.keyDown(input, { key: 'Escape' });
     expect(props.onCancelOffsetDistance).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders and controls the radial split count editor when active', () => {
+    const props = buildToolbarProps();
+    const view = render(
+      <Toolbar
+        {...props}
+        radialSplitCount={8}
+        showRadialSplitCountEditor
+      />
+    );
+
+    const input = within(view.container).getByTestId('radial-split-count');
+    expect(input).toHaveAttribute('type', 'range');
+    expect(input).toHaveAttribute('min', '2');
+    expect(input).toHaveAttribute('max', '16');
+    expect(input).toHaveAttribute('step', '1');
+
+    fireEvent.change(input, { target: { value: '6' } });
+    expect(props.onRadialSplitCountDraftChange).toHaveBeenCalledWith(6);
+
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(props.onCommitRadialSplitCount).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(props.onCancelRadialSplitCount).toHaveBeenCalledTimes(1);
   });
 });

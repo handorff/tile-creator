@@ -392,4 +392,91 @@ describe('App', () => {
 
     await waitFor(() => expect(screen.queryByTestId('offset-distance')).not.toBeInTheDocument());
   });
+
+  it('creates radial spokes, previews count changes, and clears the editor when deselected', async () => {
+    storeProject({
+      tile: { shape: 'square', size: 120 },
+      primitives: [
+        {
+          id: 'circle-1',
+          kind: 'circle',
+          center: { x: 0, y: 0 },
+          radius: 40,
+          color: '#111111',
+          strokeWidth: 2
+        }
+      ],
+      activeTool: 'select',
+      activeColor: '#111111',
+      activeStrokeWidth: 2,
+      history: {
+        past: [],
+        future: []
+      }
+    });
+
+    const { container } = render(<App />);
+    const canvas = container.querySelector('svg.editor-canvas');
+    expect(canvas).not.toBeNull();
+    if (!canvas) {
+      return;
+    }
+
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 700, 700));
+
+    fireEvent.keyDown(window, { key: 'a', metaKey: true });
+    await waitFor(() => expect(container.querySelectorAll('.selected-primitive')).toHaveLength(1));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Radial Split' }));
+
+    await waitFor(() => expect(container.querySelectorAll('.selected-primitive')).toHaveLength(8));
+    expect(screen.getByTestId('radial-split-count')).toHaveValue('8');
+
+    const afterCreate = JSON.parse(window.localStorage.getItem('tile-creator-project-v1') ?? '{}');
+    expect(afterCreate.project.primitives).toHaveLength(9);
+    const createdSpokes = afterCreate.project.primitives.filter(
+      (primitive: { kind: string; id: string }) => primitive.kind === 'line'
+    );
+    expect(createdSpokes).toHaveLength(8);
+
+    fireEvent.change(screen.getByTestId('radial-split-count'), { target: { value: '6' } });
+
+    await waitFor(() => expect(container.querySelectorAll('.selected-primitive')).toHaveLength(6));
+
+    const beforeCommit = JSON.parse(window.localStorage.getItem('tile-creator-project-v1') ?? '{}');
+    const uncommittedSpokes = beforeCommit.project.primitives.filter(
+      (primitive: { kind: string }) => primitive.kind === 'line'
+    );
+    expect(uncommittedSpokes).toHaveLength(8);
+
+    fireEvent.blur(screen.getByTestId('radial-split-count'));
+
+    await waitFor(() => expect(screen.getByTestId('radial-split-count')).toHaveValue('6'));
+
+    const afterEdit = JSON.parse(window.localStorage.getItem('tile-creator-project-v1') ?? '{}');
+    expect(afterEdit.project.primitives).toHaveLength(7);
+    const editedSpokes = afterEdit.project.primitives.filter(
+      (primitive: { kind: string }) => primitive.kind === 'line'
+    );
+    expect(editedSpokes).toHaveLength(6);
+
+    fireEvent.pointerDown(canvas, {
+      clientX: 850,
+      clientY: 850,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+    fireEvent.pointerUp(canvas, {
+      clientX: 850,
+      clientY: 850,
+      button: 0,
+      pointerId: 1,
+      pointerType: 'mouse',
+      isPrimary: true
+    });
+
+    await waitFor(() => expect(screen.queryByTestId('radial-split-count')).not.toBeInTheDocument());
+  });
 });

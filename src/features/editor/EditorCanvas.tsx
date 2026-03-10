@@ -389,18 +389,18 @@ export function EditorCanvas(props: EditorCanvasProps): JSX.Element {
   const periodicOffsets = useMemo(() => periodicNeighborOffsets(props.tile), [props.tile]);
 
   useEffect(() => {
-    setSelectedIds((current) => {
-      const valid = current.filter((id) => props.primitives.some((primitive) => primitive.id === id));
-      if (valid.length !== current.length) {
-        setEditDrag(null);
-      }
-      return valid;
-    });
-  }, [props.primitives]);
-
-  useEffect(() => {
     setSelectedIds((current) => (sameSelectionIds(current, props.selectedIds) ? current : props.selectedIds));
   }, [props.selectedIds]);
+
+  useEffect(() => {
+    if (!editDrag) {
+      return;
+    }
+
+    if (!props.primitives.some((primitive) => primitive.id === editDrag.primitiveId)) {
+      setEditDrag(null);
+    }
+  }, [editDrag, props.primitives]);
 
   useEffect(() => {
     if (props.activeTool !== 'select') {

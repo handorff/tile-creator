@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent as ReactPointerEvent } from 'react';
-import { buildSymmetricOffsets, isOffsettablePrimitive } from '../geometry';
+import { buildRadialSpokes, buildSymmetricOffsets, isOffsettablePrimitive } from '../geometry';
 import { EditorCanvas } from '../features/editor/EditorCanvas';
 import { buildHistoryTimeline } from '../features/editor/historyTimeline';
 import { SELECTION_SHORTCUTS, TOOL_SHORTCUT_BY_KEY } from '../features/editor/shortcuts';
@@ -23,7 +23,15 @@ import {
   initialProjectState,
   projectReducer
 } from '../state/projectState';
-import type { PatternSize, Point, Primitive, ProjectState, TileShape, Tool } from '../types/model';
+import type {
+  CirclePrimitive,
+  PatternSize,
+  Point,
+  Primitive,
+  ProjectState,
+  TileShape,
+  Tool
+} from '../types/model';
 import { downloadBlob, downloadText } from '../utils/download';
 import { createId } from '../utils/ids';
 
@@ -44,12 +52,22 @@ interface OffsetSession {
   draftDistance: number;
 }
 
+interface RadialSplitSession {
+  sourceCircle: CirclePrimitive;
+  generatedIds: string[];
+  count: number;
+  draftCount: number;
+}
+
 const MIN_EDITOR_ZOOM = 0.5;
 const MAX_EDITOR_ZOOM = 10;
 const MIN_PREVIEW_ZOOM = 0.5;
 const MAX_PREVIEW_ZOOM = 10;
 const MIN_EDITOR_PANE = 0.3;
 const MAX_EDITOR_PANE = 0.7;
+const DEFAULT_RADIAL_SPLIT_COUNT = 8;
+const MIN_RADIAL_SPLIT_COUNT = 2;
+const MAX_RADIAL_SPLIT_COUNT = 16;
 
 function clampPattern(value: number): number {
   if (Number.isNaN(value) || value < 1) {
@@ -93,6 +111,17 @@ function normalizeOffsetDistance(value: number, fallback: number): number {
   }
 
   return Math.max(0, value);
+}
+
+function normalizeRadialSplitCount(value: number, fallback: number): number {
+  if (Number.isNaN(value)) {
+    return fallback;
+  }
+
+  return Math.min(
+    MAX_RADIAL_SPLIT_COUNT,
+    Math.max(MIN_RADIAL_SPLIT_COUNT, Math.round(value))
+  );
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -205,9 +234,11 @@ export function App(): JSX.Element {
   const [selectedPrimitiveIds, setSelectedPrimitiveIds] = useState<string[]>([]);
   const [splitSelectionPrimitiveId, setSplitSelectionPrimitiveId] = useState<string | null>(null);
   const [offsetSession, setOffsetSession] = useState<OffsetSession | null>(null);
+  const [radialSplitSession, setRadialSplitSession] = useState<RadialSplitSession | null>(null);
   const [lastOffsetDistance, setLastOffsetDistance] = useState<number>(
     defaultOffsetDistanceForTile(initial.project.tile.size)
   );
+  const [lastRadialSplitCount, setLastRadialSplitCount] = useState<number>(DEFAULT_RADIAL_SPLIT_COUNT);
   const [isExportingGif, setIsExportingGif] = useState<boolean>(false);
   const [loadingPresetId, setLoadingPresetId] = useState<string | null>(null);
   const [isPresetGalleryOpen, setIsPresetGalleryOpen] = useState<boolean>(false);
@@ -329,6 +360,14 @@ export function App(): JSX.Element {
 
     return selected;
   }, [project.primitives, selectedPrimitiveIds]);
+  const selectedCircle = useMemo(() => {
+    if (selectedPrimitiveIds.length !== 1) {
+      return null;
+    }
+
+    const selected = project.primitives.find((primitive) => primitive.id === selectedPrimitiveIds[0]);
+    return selected?.kind === 'circle' ? selected : null;
+  }, [project.primitives, selectedPrimitiveIds]);
   const selectedPrimitives = useMemo(() => {
     if (selectedPrimitiveIds.length === 0) {
       return [];
@@ -368,31 +407,55 @@ export function App(): JSX.Element {
     project.activeTool === 'select' &&
     selectedPrimitives.length > 0 &&
     selectedPrimitives.every(isOffsettablePrimitive);
+  const canRadialSplitSelection = project.activeTool === 'select' && selectedCircle !== null;
   const splitSelectionArmed =
     canSplitSelection &&
     !!selectedSplitPrimitive &&
     splitSelectionPrimitiveId === selectedSplitPrimitive.id;
   const renderedPrimitives = useMemo(() => {
-    if (!offsetSession) {
-      return project.primitives;
+    let previewPrimitives = project.primitives;
+
+    if (offsetSession) {
+      const previewDistance = normalizeOffsetDistance(offsetSession.draftDistance, offsetSession.distance);
+      if (previewDistance !== offsetSession.distance) {
+        const previewOffsets = buildSymmetricOffsets(offsetSession.sourceSnapshot, previewDistance, {
+          reuseIds: offsetSession.generatedIds,
+          tile: project.tile
+        });
+        if (previewOffsets.length === offsetSession.generatedIds.length) {
+          const previewById = new Map(previewOffsets.map((primitive) => [primitive.id, primitive]));
+          previewPrimitives = previewPrimitives.map((primitive) => previewById.get(primitive.id) ?? primitive);
+        }
+      }
     }
 
-    const previewDistance = normalizeOffsetDistance(offsetSession.draftDistance, offsetSession.distance);
-    if (previewDistance === offsetSession.distance) {
-      return project.primitives;
+    if (!radialSplitSession) {
+      return previewPrimitives;
     }
 
-    const previewOffsets = buildSymmetricOffsets(offsetSession.sourceSnapshot, previewDistance, {
-      reuseIds: offsetSession.generatedIds,
-      tile: project.tile
+    const previewCount = normalizeRadialSplitCount(
+      radialSplitSession.draftCount,
+      radialSplitSession.count
+    );
+    if (previewCount === radialSplitSession.count) {
+      return previewPrimitives;
+    }
+
+    const previewSpokes = buildRadialSpokes(radialSplitSession.sourceCircle, previewCount, {
+      reuseIds: Array.from({ length: previewCount }, (_, index) =>
+        radialSplitSession.generatedIds[index] ?? `radial-preview-${index}`
+      )
     });
-    if (previewOffsets.length !== offsetSession.generatedIds.length) {
-      return project.primitives;
+    const committedIdSet = new Set(radialSplitSession.generatedIds);
+    const withoutCommitted = previewPrimitives.filter((primitive) => !committedIdSet.has(primitive.id));
+    const firstCommittedIndex = previewPrimitives.findIndex((primitive) => committedIdSet.has(primitive.id));
+    if (firstCommittedIndex < 0) {
+      return previewPrimitives;
     }
 
-    const previewById = new Map(previewOffsets.map((primitive) => [primitive.id, primitive]));
-    return project.primitives.map((primitive) => previewById.get(primitive.id) ?? primitive);
-  }, [offsetSession, project.primitives, project.tile]);
+    withoutCommitted.splice(firstCommittedIndex, 0, ...previewSpokes);
+    return withoutCommitted;
+  }, [offsetSession, project.primitives, project.tile, radialSplitSession]);
   const visiblePrimitives = useMemo(
     () => renderedPrimitives.filter((primitive) => !hiddenColorSet.has(primitive.color)),
     [hiddenColorSet, renderedPrimitives]
@@ -444,6 +507,33 @@ export function App(): JSX.Element {
         : null;
     });
   }, [project.primitives, project.tile, selectedPrimitiveIds]);
+
+  useEffect(() => {
+    setRadialSplitSession((current) => {
+      if (!current) {
+        return null;
+      }
+
+      if (!sameIdSet(selectedPrimitiveIds, current.generatedIds)) {
+        return null;
+      }
+
+      const currentGenerated = current.generatedIds
+        .map((id) => project.primitives.find((primitive) => primitive.id === id) ?? null);
+      if (currentGenerated.some((primitive) => primitive === null)) {
+        return null;
+      }
+
+      const expectedGenerated = buildRadialSpokes(current.sourceCircle, current.count, {
+        reuseIds: current.generatedIds
+      });
+      return expectedGenerated.every((primitive, index) =>
+        samePrimitive(primitive, currentGenerated[index]!)
+      )
+        ? current
+        : null;
+    });
+  }, [project.primitives, selectedPrimitiveIds]);
 
   const addPrimitive = (primitive: Primitive): void => {
     dispatch({ type: 'add-primitive', primitive });
@@ -612,6 +702,7 @@ export function App(): JSX.Element {
     const generatedIds = offsets.map((primitive) => primitive.id);
     setSelectedPrimitiveIds(generatedIds);
     setSplitSelectionPrimitiveId(null);
+    setRadialSplitSession(null);
     setOffsetSession({
       sourceSnapshot: selectedPrimitives,
       generatedIds,
@@ -620,6 +711,38 @@ export function App(): JSX.Element {
     });
     setLastOffsetDistance(distanceValue);
   }, [canOffsetSelection, lastOffsetDistance, project.tile, project.tile.size, selectedPrimitives]);
+
+  const splitCircleRadiallySelected = useCallback((): void => {
+    if (!selectedCircle || project.activeTool !== 'select') {
+      return;
+    }
+
+    const countValue = normalizeRadialSplitCount(lastRadialSplitCount, DEFAULT_RADIAL_SPLIT_COUNT);
+    const spokes = buildRadialSpokes(selectedCircle, countValue, {
+      makeId: () => createId('line')
+    });
+    if (spokes.length === 0) {
+      return;
+    }
+
+    dispatch({
+      type: 'add-primitives',
+      primitives: spokes,
+      historyDescription: `Radial split circle into ${countValue} parts`
+    });
+
+    const generatedIds = spokes.map((primitive) => primitive.id);
+    setSelectedPrimitiveIds(generatedIds);
+    setSplitSelectionPrimitiveId(null);
+    setOffsetSession(null);
+    setRadialSplitSession({
+      sourceCircle: selectedCircle,
+      generatedIds,
+      count: countValue,
+      draftCount: countValue
+    });
+    setLastRadialSplitCount(countValue);
+  }, [lastRadialSplitCount, project.activeTool, selectedCircle]);
 
   const setOffsetDistanceDraft = useCallback((value: number): void => {
     setOffsetSession((current) =>
@@ -686,6 +809,64 @@ export function App(): JSX.Element {
     setLastOffsetDistance(nextDistance);
   }, [offsetSession, project.tile]);
 
+  const setRadialSplitCountDraft = useCallback((value: number): void => {
+    setRadialSplitSession((current) =>
+      current
+        ? {
+            ...current,
+            draftCount: normalizeRadialSplitCount(value, current.draftCount)
+          }
+        : current
+    );
+  }, []);
+
+  const cancelRadialSplitCount = useCallback((): void => {
+    setRadialSplitSession((current) =>
+      current
+        ? {
+            ...current,
+            draftCount: current.count
+          }
+        : current
+    );
+  }, []);
+
+  const commitRadialSplitCount = useCallback((): void => {
+    if (!radialSplitSession) {
+      return;
+    }
+
+    const nextCount = normalizeRadialSplitCount(radialSplitSession.draftCount, radialSplitSession.count);
+    if (nextCount === radialSplitSession.count) {
+      return;
+    }
+
+    const updated = buildRadialSpokes(radialSplitSession.sourceCircle, nextCount, {
+      reuseIds: radialSplitSession.generatedIds,
+      makeId: () => createId('line')
+    });
+    dispatch({
+      type: 'replace-generated-primitives',
+      previousIds: radialSplitSession.generatedIds,
+      primitives: updated,
+      historyDescription: 'Adjust radial split count'
+    });
+
+    const generatedIds = updated.map((primitive) => primitive.id);
+    setSelectedPrimitiveIds(generatedIds);
+    setRadialSplitSession((current) =>
+      current
+        ? {
+            ...current,
+            generatedIds,
+            count: nextCount,
+            draftCount: nextCount
+          }
+        : current
+    );
+    setLastRadialSplitCount(nextCount);
+  }, [radialSplitSession]);
+
   const rotateSelected = useCallback(
     (clockwise: boolean): void => {
       if (selectedPrimitiveIds.length === 0) {
@@ -744,6 +925,8 @@ export function App(): JSX.Element {
     setTool('select');
     setSelectedPrimitiveIds(visiblePrimitives.map((primitive) => primitive.id));
     setSplitSelectionPrimitiveId(null);
+    setOffsetSession(null);
+    setRadialSplitSession(null);
   }, [setTool, visiblePrimitives]);
 
   useEffect(() => {
@@ -812,6 +995,12 @@ export function App(): JSX.Element {
         return;
       }
 
+      if (key === SELECTION_SHORTCUTS.radialSplit) {
+        event.preventDefault();
+        splitCircleRadiallySelected();
+        return;
+      }
+
       if (key === SELECTION_SHORTCUTS.rotateCcw) {
         event.preventDefault();
         rotateSelected(false);
@@ -826,7 +1015,16 @@ export function App(): JSX.Element {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [duplicateSelected, flipSelectedArcs, offsetSelected, rotateSelected, selectAllVisible, setTool, toggleSplitSelection]);
+  }, [
+    duplicateSelected,
+    flipSelectedArcs,
+    offsetSelected,
+    rotateSelected,
+    selectAllVisible,
+    setTool,
+    splitCircleRadiallySelected,
+    toggleSplitSelection
+  ]);
 
   const createNewTile = (shape: TileShape): void => {
     dispatch({
@@ -848,6 +1046,7 @@ export function App(): JSX.Element {
     setSelectedPrimitiveIds([]);
     setSplitSelectionPrimitiveId(null);
     setOffsetSession(null);
+    setRadialSplitSession(null);
     setIsNewTileModalOpen(false);
   };
 
@@ -891,6 +1090,7 @@ export function App(): JSX.Element {
       setPattern(loaded.pattern);
       setSplitSelectionPrimitiveId(null);
       setOffsetSession(null);
+      setRadialSplitSession(null);
     } catch {
       return;
     } finally {
@@ -914,6 +1114,7 @@ export function App(): JSX.Element {
       setSelectedPrimitiveIds([]);
       setSplitSelectionPrimitiveId(null);
       setOffsetSession(null);
+      setRadialSplitSession(null);
       setIsPresetGalleryOpen(false);
     } catch {
       return;
@@ -994,9 +1195,12 @@ export function App(): JSX.Element {
           canSplitSelection={canSplitSelection}
           canFlipArcSelection={canFlipArcSelection}
           canOffsetSelection={canOffsetSelection}
+          canRadialSplitSelection={canRadialSplitSelection}
           splitSelectionArmed={splitSelectionArmed}
           offsetDistance={offsetSession?.draftDistance ?? null}
           showOffsetDistanceEditor={offsetSession !== null}
+          radialSplitCount={radialSplitSession?.draftCount ?? null}
+          showRadialSplitCountEditor={radialSplitSession !== null}
           onToolChange={setTool}
           onColorChange={setColor}
           onStrokeWidthChange={setStrokeWidth}
@@ -1008,9 +1212,13 @@ export function App(): JSX.Element {
           onSplitSelection={toggleSplitSelection}
           onFlipArcSelection={flipSelectedArcs}
           onOffsetSelection={offsetSelected}
+          onRadialSplitSelection={splitCircleRadiallySelected}
           onOffsetDistanceDraftChange={setOffsetDistanceDraft}
           onCommitOffsetDistance={commitOffsetDistance}
           onCancelOffsetDistance={cancelOffsetDistance}
+          onRadialSplitCountDraftChange={setRadialSplitCountDraft}
+          onCommitRadialSplitCount={commitRadialSplitCount}
+          onCancelRadialSplitCount={cancelRadialSplitCount}
           onRotateSelectionCcw={() => rotateSelected(false)}
           onRotateSelectionCw={() => rotateSelected(true)}
           onUndo={() => dispatch({ type: 'undo' })}

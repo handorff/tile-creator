@@ -74,6 +74,12 @@ export type ProjectAction =
   | { type: 'set-tile-shape'; shape: TileShape }
   | { type: 'add-primitive'; primitive: Primitive }
   | { type: 'add-primitives'; primitives: Primitive[]; historyDescription?: string }
+  | {
+      type: 'replace-generated-primitives';
+      previousIds: string[];
+      primitives: Primitive[];
+      historyDescription?: string;
+    }
   | { type: 'update-primitive'; primitive: Primitive }
   | { type: 'update-primitives'; primitives: Primitive[]; historyDescription?: string }
   | { type: 'split-line'; id: string; point: Point; firstId: string; secondId: string }
@@ -250,6 +256,50 @@ function updatePrimitives(
   return {
     ...next,
     primitives: updatedPrimitives
+  };
+}
+
+function replaceGeneratedPrimitives(
+  state: ProjectState,
+  previousIds: string[],
+  primitives: Primitive[],
+  historyDescription?: string
+): ProjectState {
+  const normalizedPrimitives = primitives.map(withNormalizedStrokeWidth);
+  const previousIdSet = new Set(previousIds);
+  let inserted = false;
+  const nextPrimitives: Primitive[] = [];
+
+  for (const primitive of state.primitives) {
+    if (!previousIdSet.has(primitive.id)) {
+      nextPrimitives.push(primitive);
+      continue;
+    }
+
+    if (!inserted) {
+      nextPrimitives.push(...normalizedPrimitives);
+      inserted = true;
+    }
+  }
+
+  if (!inserted) {
+    nextPrimitives.push(...normalizedPrimitives);
+  }
+
+  const changed =
+    nextPrimitives.length !== state.primitives.length ||
+    nextPrimitives.some((primitive, index) => !samePrimitive(primitive, state.primitives[index]!));
+  if (!changed) {
+    return state;
+  }
+
+  const next = withHistory(
+    state,
+    historyDescription ?? describeShapeCount('Edit', normalizedPrimitives.length)
+  );
+  return {
+    ...next,
+    primitives: nextPrimitives
   };
 }
 
@@ -521,6 +571,13 @@ export function projectReducer(state: ProjectState, action: ProjectAction): Proj
       return addPrimitive(state, action.primitive);
     case 'add-primitives':
       return addPrimitives(state, action.primitives, action.historyDescription);
+    case 'replace-generated-primitives':
+      return replaceGeneratedPrimitives(
+        state,
+        action.previousIds,
+        action.primitives,
+        action.historyDescription
+      );
     case 'update-primitive':
       return updatePrimitive(state, action.primitive);
     case 'update-primitives':

@@ -173,7 +173,12 @@ button.active {
 }
 
 .selection-buttons {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.selection-buttons .icon-button {
+  min-height: 1.85rem;
+  padding: 0.25rem;
 }
 
 .stroke-buttons {

@@ -14,6 +14,7 @@ import {
   RotateCcw,
   RotateCw,
   Scissors,
+  ShipWheel,
   Slash,
   type LucideIcon
 } from 'lucide-react';
@@ -37,9 +38,12 @@ interface ToolbarProps {
   canSplitSelection: boolean;
   canFlipArcSelection: boolean;
   canOffsetSelection: boolean;
+  canRadialSplitSelection: boolean;
   splitSelectionArmed: boolean;
   offsetDistance: number | null;
   showOffsetDistanceEditor: boolean;
+  radialSplitCount: number | null;
+  showRadialSplitCountEditor: boolean;
   onToolChange: (tool: Tool) => void;
   onColorChange: (color: string) => void;
   onStrokeWidthChange: (strokeWidth: number) => void;
@@ -51,9 +55,13 @@ interface ToolbarProps {
   onSplitSelection: () => void;
   onFlipArcSelection: () => void;
   onOffsetSelection: () => void;
+  onRadialSplitSelection: () => void;
   onOffsetDistanceDraftChange: (value: number) => void;
   onCommitOffsetDistance: () => void;
   onCancelOffsetDistance: () => void;
+  onRadialSplitCountDraftChange: (value: number) => void;
+  onCommitRadialSplitCount: () => void;
+  onCancelRadialSplitCount: () => void;
   onRotateSelectionCcw: () => void;
   onRotateSelectionCw: () => void;
   onUndo: () => void;
@@ -73,6 +81,9 @@ const STROKE_OPTIONS = [0.5, 1, 2, 4] as const;
 const MIN_OFFSET_DISTANCE = 0;
 const MAX_OFFSET_DISTANCE = 16;
 const OFFSET_DISTANCE_STEP = 0.5;
+const MIN_RADIAL_SPLIT_COUNT = 2;
+const MAX_RADIAL_SPLIT_COUNT = 16;
+const RADIAL_SPLIT_COUNT_STEP = 1;
 const MIN_EDITOR_ZOOM = 0.5;
 const MAX_EDITOR_ZOOM = 10;
 
@@ -91,6 +102,7 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
     : Number.isInteger(props.offsetDistance)
       ? props.offsetDistance.toString()
       : props.offsetDistance.toFixed(1);
+  const radialSplitCountLabel = props.radialSplitCount === null ? '' : props.radialSplitCount.toString();
 
   return (
     <aside className="toolbar">
@@ -160,6 +172,16 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
           </button>
           <button
             type="button"
+            aria-label="Radial Split"
+            title={`Split selected circle into radial parts (${formatShortcutKey(SELECTION_SHORTCUTS.radialSplit)})`}
+            className="icon-button"
+            onClick={props.onRadialSplitSelection}
+            disabled={!props.canRadialSplitSelection}
+          >
+            <ShipWheel className="toolbar-icon" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
             aria-label="Rotate counterclockwise"
             title={`Rotate selection counterclockwise by ${rotationStepLabel} degrees (${formatShortcutKey(SELECTION_SHORTCUTS.rotateCcw)})`}
             className="icon-button"
@@ -199,6 +221,31 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
                 if (event.key === 'Escape') {
                   event.preventDefault();
                   props.onCancelOffsetDistance();
+                }
+              }}
+            />
+          </label>
+        ) : null}
+        {props.showRadialSplitCountEditor && props.radialSplitCount !== null ? (
+          <label className="field selection-field">
+            Radial split count ({radialSplitCountLabel})
+            <input
+              data-testid="radial-split-count"
+              type="range"
+              min={MIN_RADIAL_SPLIT_COUNT}
+              max={MAX_RADIAL_SPLIT_COUNT}
+              step={RADIAL_SPLIT_COUNT_STEP}
+              value={props.radialSplitCount}
+              onChange={(event) => props.onRadialSplitCountDraftChange(Number(event.target.value))}
+              onBlur={props.onCommitRadialSplitCount}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  props.onCommitRadialSplitCount();
+                }
+
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  props.onCancelRadialSplitCount();
                 }
               }}
             />

@@ -24,6 +24,7 @@ export const SELECTION_SHORTCUTS = {
   split: 'x',
   flipArc: 'f',
   offset: 'o',
+  radialSplit: 'p',
   rotateCcw: 'q',
   rotateCw: 'r'
 } as const;

@@ -479,6 +479,89 @@ describe('project reducer', () => {
     expect(split.primitives[0]).toMatchObject({ id: 'circle-1', kind: 'circle' });
   });
 
+  it('replaces generated primitives in one history step and supports undo/redo', () => {
+    const withGenerated = projectReducer(initialProjectState, {
+      type: 'add-primitives',
+      primitives: [
+        {
+          id: 'circle-1',
+          kind: 'circle',
+          center: { x: 0, y: 0 },
+          radius: 10,
+          color: '#111'
+        },
+        {
+          id: 'line-1',
+          kind: 'line',
+          a: { x: 0, y: 0 },
+          b: { x: 10, y: 0 },
+          color: '#111'
+        },
+        {
+          id: 'line-2',
+          kind: 'line',
+          a: { x: 0, y: 0 },
+          b: { x: 0, y: 10 },
+          color: '#111'
+        }
+      ]
+    });
+
+    const replaced = projectReducer(withGenerated, {
+      type: 'replace-generated-primitives',
+      previousIds: ['line-1', 'line-2'],
+      primitives: [
+        {
+          id: 'line-1',
+          kind: 'line',
+          a: { x: 0, y: 0 },
+          b: { x: 10, y: 0 },
+          color: '#111'
+        },
+        {
+          id: 'line-2',
+          kind: 'line',
+          a: { x: 0, y: 0 },
+          b: { x: -5, y: 8.66 },
+          color: '#111'
+        },
+        {
+          id: 'line-3',
+          kind: 'line',
+          a: { x: 0, y: 0 },
+          b: { x: -5, y: -8.66 },
+          color: '#111'
+        }
+      ],
+      historyDescription: 'Adjust radial split count'
+    });
+
+    expect(replaced.primitives).toHaveLength(4);
+    expect(replaced.primitives.map((primitive) => primitive.id)).toEqual([
+      'circle-1',
+      'line-1',
+      'line-2',
+      'line-3'
+    ]);
+    expect(replaced.history.past).toHaveLength(2);
+    expect(replaced.history.past.at(-1)?.description).toBe('Adjust radial split count');
+
+    const undone = projectReducer(replaced, { type: 'undo' });
+    expect(undone.primitives.map((primitive) => primitive.id)).toEqual([
+      'circle-1',
+      'line-1',
+      'line-2'
+    ]);
+
+    const redone = projectReducer(undone, { type: 'redo' });
+    expect(redone.primitives.map((primitive) => primitive.id)).toEqual([
+      'circle-1',
+      'line-1',
+      'line-2',
+      'line-3'
+    ]);
+  });
+
   it('recolors all selected primitives in one history step', () => {
     const withFirst = projectReducer(initialProjectState, {
       type: 'add-primitive',
