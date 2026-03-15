@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildSingleTileSvg, buildTiledSvg } from './exportSvg';
+import { getPatternBounds } from '../../geometry';
 import { initialProjectState } from '../../state/projectState';
 
 function countOccurrences(text: string, pattern: RegExp): number {
@@ -11,7 +12,7 @@ function countLinearPathElements(svg: string): number {
 }
 
 describe('buildTiledSvg', () => {
-  it('creates tiled svg document without clip paths', () => {
+  it('creates tiled svg document clipped to the pattern bounds rectangle', () => {
     const project = {
       ...initialProjectState,
       primitives: [
@@ -29,11 +30,29 @@ describe('buildTiledSvg', () => {
 
     expect(svg.startsWith('<?xml')).toBe(true);
     expect(svg).toContain('<svg');
-    expect(svg).not.toContain('<clipPath');
-    expect(svg).not.toContain('clip-path=');
-    expect(svg).not.toContain('<defs>');
+    expect(svg).toContain('<clipPath');
+    expect(svg).toContain('clip-path=');
+    expect(svg).toContain('<defs>');
     expect(svg).not.toContain('<line ');
     expect(svg).toContain('<path');
+  });
+
+  it('uses the hex pattern bounds rectangle as the exact viewBox', () => {
+    const project = {
+      ...initialProjectState,
+      tile: {
+        ...initialProjectState.tile,
+        shape: 'hex-pointy' as const
+      }
+    };
+    const pattern = { columns: 2, rows: 2 };
+    const bounds = getPatternBounds(project.tile, pattern);
+
+    const svg = buildTiledSvg(project, { pattern });
+
+    expect(svg).toContain(
+      `viewBox="${bounds.minX} ${bounds.minY} ${bounds.maxX - bounds.minX} ${bounds.maxY - bounds.minY}"`
+    );
   });
 
   it('joins connected line fragments into a single stroke path', () => {
@@ -61,7 +80,7 @@ describe('buildTiledSvg', () => {
 
     expect(countOccurrences(svg, /<line /g)).toBe(0);
     expect(countLinearPathElements(svg)).toBe(1);
-    expect(svg).not.toContain('<clipPath');
+    expect(svg).toContain('<clipPath');
   });
 
   it('creates minimal trail count for branching line graph', () => {
@@ -151,6 +170,30 @@ describe('buildTiledSvg', () => {
     expect(countLinearPathElements(svg)).toBe(3);
   });
 
+  it('fills a hex crop rectangle with neighboring cells outside the selected extent', () => {
+    const project = {
+      ...initialProjectState,
+      tile: {
+        ...initialProjectState.tile,
+        shape: 'hex-pointy' as const
+      },
+      primitives: [
+        {
+          id: 'circle-corner-fill',
+          kind: 'circle' as const,
+          center: { x: 0, y: 60 },
+          radius: 18,
+          color: '#111'
+        }
+      ]
+    };
+
+    const svg = buildTiledSvg(project, { pattern: { columns: 1, rows: 1 } });
+
+    expect(countOccurrences(svg, /<circle /g)).toBe(1);
+    expect(countOccurrences(svg, /<path /g)).toBeGreaterThan(0);
+  });
+
   it('optionally includes a pattern bounds rectangle in tiled export', () => {
     const project = {
       ...initialProjectState,
@@ -213,6 +256,33 @@ describe('buildTiledSvg', () => {
 
     expect(countOccurrences(svg, /<circle /g)).toBe(0);
     expect(countOccurrences(svg, /<path /g)).toBeGreaterThan(0);
+  });
+
+  it('keeps thick strokes clipped to the rectangle boundary', () => {
+    const project = {
+      ...initialProjectState,
+      tile: {
+        ...initialProjectState.tile,
+        shape: 'hex-pointy' as const
+      },
+      primitives: [
+        {
+          id: 'edge-line',
+          kind: 'line' as const,
+          a: { x: -140, y: 0 },
+          b: { x: 140, y: 0 },
+          color: '#111',
+          strokeWidth: 4
+        }
+      ]
+    };
+
+    const svg = buildTiledSvg(project, { pattern: { columns: 1, rows: 1 } });
+
+    expect(svg).toContain('<clipPath id="pattern-export-clip">');
+    expect(svg).toContain(
+      '<g clip-path="url(#pattern-export-clip)">'
+    );
   });
 
   it('exports arc primitives as path elements in tiled export', () => {

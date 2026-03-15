@@ -1,18 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import {
-  getPatternBounds,
-  PATTERN_BOUNDS_STROKE,
-  getTilePolygon,
-  periodicNeighborOffsets,
-  tileBasisVectors,
-  translatePoints,
-  translatePrimitive
-} from '../../geometry';
-import type { PatternSize, Primitive, TileConfig } from '../../types/model';
-import type { Point } from '../../types/model';
-import { PrimitiveSvg } from '../editor/PrimitiveSvg';
+import { PATTERN_BOUNDS_STROKE } from '../../geometry';
+import type { PatternSize, Point, Primitive, TileConfig } from '../../types/model';
 import { renderedViewBoxLayout } from '../editor/coordinates';
+import {
+  buildPatternRenderResult,
+  type OutputRenderFragment,
+  type PatternRenderBounds
+} from './patternRender';
 
 interface TilingPreviewProps {
   tile: TileConfig;
@@ -28,32 +23,69 @@ interface PanDragState {
   startOffset: Point;
 }
 
-function getCellOffset(tile: TileConfig, col: number, row: number): { x: number; y: number } {
-  const { u, v } = tileBasisVectors(tile);
-  return {
-    x: col * u.x + row * v.x,
-    y: col * u.y + row * v.y
-  };
-}
-
 function polygonPoints(points: { x: number; y: number }[]): string {
   return points.map((point) => `${point.x},${point.y}`).join(' ');
 }
 
-function computeViewBox(tile: TileConfig, pattern: PatternSize, zoom: number): {
+function linePathD(points: Point[]): string {
+  const [first, ...rest] = points;
+  return `M ${first.x} ${first.y} ${rest.map((point) => `L ${point.x} ${point.y}`).join(' ')}`;
+}
+
+function arcFragmentPathD(fragment: Extract<OutputRenderFragment, { kind: 'arc' }>): string {
+  const largeArc = fragment.largeArc ? 1 : 0;
+  const sweep = fragment.clockwise ? 1 : 0;
+  return `M ${fragment.start.x} ${fragment.start.y} A ${fragment.radius} ${fragment.radius} 0 ${largeArc} ${sweep} ${fragment.end.x} ${fragment.end.y}`;
+}
+
+function fragmentElement(fragment: OutputRenderFragment, key: string): JSX.Element {
+  if (fragment.kind === 'line-path') {
+    return (
+      <path
+        key={key}
+        d={linePathD(fragment.points)}
+        stroke={fragment.color}
+        strokeWidth={fragment.strokeWidth}
+        fill="none"
+      />
+    );
+  }
+
+  if (fragment.kind === 'circle') {
+    return (
+      <circle
+        key={key}
+        cx={fragment.center.x}
+        cy={fragment.center.y}
+        r={fragment.radius}
+        stroke={fragment.color}
+        strokeWidth={fragment.strokeWidth}
+        fill="none"
+      />
+    );
+  }
+
+  return (
+    <path
+      key={key}
+      d={arcFragmentPathD(fragment)}
+      stroke={fragment.color}
+      strokeWidth={fragment.strokeWidth}
+      fill="none"
+    />
+  );
+}
+
+function computeViewBox(bounds: PatternRenderBounds, zoom: number): {
   x: number;
   y: number;
   width: number;
   height: number;
 } {
-  const { minX, minY, maxX, maxY } = getPatternBounds(tile, pattern);
-  const margin = tile.size * 0.3;
-  const width = maxX - minX + margin * 2;
-  const height = maxY - minY + margin * 2;
-  const centerX = minX + (maxX - minX) / 2;
-  const centerY = minY + (maxY - minY) / 2;
-  const scaledWidth = width / zoom;
-  const scaledHeight = height / zoom;
+  const centerX = bounds.minX + bounds.width / 2;
+  const centerY = bounds.minY + bounds.height / 2;
+  const scaledWidth = bounds.width / zoom;
+  const scaledHeight = bounds.height / zoom;
 
   return {
     x: centerX - scaledWidth / 2,
@@ -82,11 +114,13 @@ function releasePointer(target: SVGSVGElement, pointerId: number): void {
 export function TilingPreview(props: TilingPreviewProps): JSX.Element {
   const [panOffset, setPanOffset] = useState<Point>({ x: 0, y: 0 });
   const [panDrag, setPanDrag] = useState<PanDragState | null>(null);
-  const tilePolygon = useMemo(() => getTilePolygon(props.tile), [props.tile]);
-  const bounds = useMemo(() => getPatternBounds(props.tile, props.pattern), [props.pattern, props.tile]);
+  const rendered = useMemo(
+    () => buildPatternRenderResult(props.tile, props.primitives, props.pattern),
+    [props.pattern, props.primitives, props.tile]
+  );
   const zoomedViewBox = useMemo(
-    () => computeViewBox(props.tile, props.pattern, props.zoom),
-    [props.pattern, props.tile, props.zoom]
+    () => computeViewBox(rendered.bounds, props.zoom),
+    [props.zoom, rendered.bounds]
   );
   const viewBox = useMemo(
     () => ({
@@ -97,7 +131,7 @@ export function TilingPreview(props: TilingPreviewProps): JSX.Element {
     }),
     [panOffset, zoomedViewBox]
   );
-  const neighbors = useMemo(() => periodicNeighborOffsets(props.tile), [props.tile]);
+  const clipId = 'preview-pattern-clip';
 
   useEffect(() => {
     setPanDrag(null);
@@ -118,11 +152,11 @@ export function TilingPreview(props: TilingPreviewProps): JSX.Element {
     }
 
     const rect = event.currentTarget.getBoundingClientRect();
-    const rendered = renderedViewBoxLayout(rect, viewBox);
+    const renderedLayout = renderedViewBoxLayout(rect, viewBox);
     const deltaX = event.clientX - panDrag.clientX;
     const deltaY = event.clientY - panDrag.clientY;
-    const worldDeltaX = (deltaX / rendered.width) * viewBox.width;
-    const worldDeltaY = (deltaY / rendered.height) * viewBox.height;
+    const worldDeltaX = (deltaX / renderedLayout.width) * viewBox.width;
+    const worldDeltaY = (deltaY / renderedLayout.height) * viewBox.height;
 
     setPanOffset({
       x: panDrag.startOffset.x - worldDeltaX,
@@ -154,49 +188,34 @@ export function TilingPreview(props: TilingPreviewProps): JSX.Element {
         onPointerCancel={handlePointerUp}
       >
         <defs>
-          {Array.from({ length: props.pattern.rows }, (_, row) =>
-            Array.from({ length: props.pattern.columns }, (_, col) => {
-              const offset = getCellOffset(props.tile, col, row);
-              const points = translatePoints(tilePolygon, offset);
-              return (
-                <clipPath key={`clip-${col}-${row}`} id={`preview-clip-${col}-${row}`}>
-                  <polygon points={polygonPoints(points)} />
-                </clipPath>
-              );
-            })
-          )}
+          <clipPath id={clipId}>
+            <rect
+              x={rendered.bounds.minX}
+              y={rendered.bounds.minY}
+              width={rendered.bounds.width}
+              height={rendered.bounds.height}
+            />
+          </clipPath>
         </defs>
 
-        {Array.from({ length: props.pattern.rows }, (_, row) =>
-          Array.from({ length: props.pattern.columns }, (_, col) => {
-            const offset = getCellOffset(props.tile, col, row);
-            const tilePoints = translatePoints(tilePolygon, offset);
+        <g clipPath={`url(#${clipId})`}>
+          {rendered.fragments.map((fragment, index) => fragmentElement(fragment, `fragment-${index}`))}
+          {rendered.outlinePolygons.map((points, index) => (
+            <polygon
+              key={`outline-${index}`}
+              className="tile-outline preview-outline"
+              points={polygonPoints(points)}
+            />
+          ))}
+        </g>
 
-            return (
-              <g key={`cell-${col}-${row}`} clipPath={`url(#preview-clip-${col}-${row})`}>
-                {props.primitives.flatMap((primitive) =>
-                  neighbors.map((neighbor, idx) => (
-                    <PrimitiveSvg
-                      key={`${primitive.id}-${col}-${row}-${idx}`}
-                      primitive={translatePrimitive(primitive, {
-                        x: offset.x + neighbor.x,
-                        y: offset.y + neighbor.y
-                      })}
-                    />
-                  ))
-                )}
-                <polygon className="tile-outline preview-outline" points={polygonPoints(tilePoints)} />
-              </g>
-            );
-          })
-        )}
         {props.showPatternBounds ? (
           <rect
             className="pattern-bounds"
-            x={bounds.minX}
-            y={bounds.minY}
-            width={bounds.maxX - bounds.minX}
-            height={bounds.maxY - bounds.minY}
+            x={rendered.bounds.minX}
+            y={rendered.bounds.minY}
+            width={rendered.bounds.width}
+            height={rendered.bounds.height}
             fill="none"
             stroke={PATTERN_BOUNDS_STROKE}
             strokeWidth={2}

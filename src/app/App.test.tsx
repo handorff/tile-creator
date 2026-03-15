@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getPatternBounds } from '../geometry';
 
 const buildAnimatedGifMock = vi.fn();
 const downloadBlobMock = vi.fn();
@@ -18,16 +19,13 @@ vi.mock('../utils/download', async () => {
 
 import { App } from './App';
 
-function storeProject(project: unknown): void {
+function storeProject(project: unknown, pattern = { columns: 4, rows: 3 }): void {
   window.localStorage.setItem(
     'tile-creator-project-v1',
     JSON.stringify({
       version: 1,
       project,
-      pattern: {
-        columns: 4,
-        rows: 3
-      }
+      pattern
     })
   );
 }
@@ -72,6 +70,50 @@ describe('App', () => {
     const boundsRect = container.querySelector('.preview-canvas .pattern-bounds');
     expect(boundsRect).not.toBeNull();
     expect(boundsRect).toHaveAttribute('stroke', '#1f2937');
+  });
+
+  it('uses the crop rectangle as the preview viewBox for hex tiles', () => {
+    const project = {
+      tile: { shape: 'hex-pointy' as const, size: 120 },
+      primitives: [],
+      activeTool: 'line',
+      activeColor: '#000000',
+      activeStrokeWidth: 2,
+      history: {
+        past: [],
+        future: []
+      }
+    };
+    const pattern = { columns: 1, rows: 1 };
+    const bounds = getPatternBounds(project.tile, pattern);
+
+    storeProject(project, pattern);
+    render(<App />);
+
+    expect(screen.getByTestId('tiling-preview')).toHaveAttribute(
+      'viewBox',
+      `${bounds.minX} ${bounds.minY} ${bounds.maxX - bounds.minX} ${bounds.maxY - bounds.minY}`
+    );
+  });
+
+  it('renders neighboring hex outlines to fill the preview crop rectangle', () => {
+    const project = {
+      tile: { shape: 'hex-pointy' as const, size: 120 },
+      primitives: [],
+      activeTool: 'line',
+      activeColor: '#000000',
+      activeStrokeWidth: 2,
+      history: {
+        past: [],
+        future: []
+      }
+    };
+
+    storeProject(project, { columns: 1, rows: 1 });
+    const { container } = render(<App />);
+
+    expect(container.querySelector('.preview-canvas clipPath rect')).not.toBeNull();
+    expect(container.querySelectorAll('.preview-canvas .preview-outline').length).toBeGreaterThan(1);
   });
 
   it('keeps editor neighbors hidden by default and toggles them on demand', () => {
