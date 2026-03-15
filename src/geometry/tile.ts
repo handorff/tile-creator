@@ -64,31 +64,25 @@ export function getPatternBounds(config: TileConfig, pattern: PatternSize): {
   maxX: number;
   maxY: number;
 } {
-  const base = getTilePolygon(config);
-  const { u, v } = tileBasisVectors(config);
+  const bounds = polygonBounds(getTilePolygon(config));
+  const width = bounds.maxX - bounds.minX;
+  const height = bounds.maxY - bounds.minY;
 
-  let minX = Number.POSITIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-
-  for (let row = 0; row < pattern.rows; row += 1) {
-    for (let col = 0; col < pattern.columns; col += 1) {
-      const offset = {
-        x: col * u.x + row * v.x,
-        y: col * u.y + row * v.y
-      };
-      const moved = translatePoints(base, offset);
-      for (const point of moved) {
-        minX = Math.min(minX, point.x);
-        minY = Math.min(minY, point.y);
-        maxX = Math.max(maxX, point.x);
-        maxY = Math.max(maxY, point.y);
-      }
-    }
+  if (config.shape === 'hex-pointy') {
+    return {
+      minX: bounds.minX,
+      minY: bounds.minY,
+      maxX: bounds.minX + width * pattern.columns,
+      maxY: bounds.minY + height + Math.max(0, pattern.rows - 1) * ((config.size * 3) / 2)
+    };
   }
 
-  return { minX, minY, maxX, maxY };
+  return {
+    minX: bounds.minX,
+    minY: bounds.minY,
+    maxX: bounds.minX + width * pattern.columns,
+    maxY: bounds.minY + height * pattern.rows
+  };
 }
 
 export function periodicNeighborOffsets(config: TileConfig): Point[] {
